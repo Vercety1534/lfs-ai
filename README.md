@@ -27,7 +27,7 @@ It is not intended to replace understanding the LFS process. The LFS and BLFS bo
 - Review `settings.conf` before install
 - Understanding of the LFS build process
 
-See `deps.md` for host system dependencies.
+See `DEPS.md` for host system dependencies.
 
 ## Project Structure
 
