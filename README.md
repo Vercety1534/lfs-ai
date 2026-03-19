@@ -90,7 +90,7 @@ Incorrect settings can destroy data or overwrite the wrong system.
 
 Logs are written under:
 
-`$LFS/logs/lfs/`
+`$LFS/logs`
 
 These logs are intended to make it easier to identify which stage or package failed.
 
