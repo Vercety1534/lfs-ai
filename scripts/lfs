@@ -27,16 +27,33 @@ die() {
     exit 1
 }
 
+validate_placeholder() {
+    local name="$1"
+    local value="$2"
+
+    case "$value" in
+        REPLACE_ME|/dev/REPLACE_ME)
+            die "$name is still set to a placeholder value."
+            ;;
+    esac
+}
+
 validate_drive_name() {
     local value="$1"
 
-    [ -n "$value" ] || die "DRIVE is empty."
+    validate_placeholder "DRIVE" "$value"
 
     case "$value" in
-        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+        /dev/sd[a-z]|/dev/vd[a-z]|/dev/xvd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
             ;;
         *)
-            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            die "DRIVE must be a whole disk like /dev/sda, /dev/vda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    case "$value" in
+        /dev/sd[a-z][0-9]|/dev/vd[a-z][0-9]|/dev/xvd[a-z][0-9]|/dev/nvme[0-9]n[0-9]p[0-9]|/dev/mmcblk[0-9]p[0-9])
+            die "DRIVE must be a whole disk, not a partition. Got: $value"
             ;;
     esac
 
@@ -65,7 +82,7 @@ derive_partitions() {
             SWAP="${DRIVE}p2"
             MAIN="${DRIVE}p3"
             ;;
-        /dev/sd*)
+        /dev/sd*|/dev/vd*|/dev/xvd*)
             EFI="${DRIVE}1"
             SWAP="${DRIVE}2"
             MAIN="${DRIVE}3"
@@ -82,6 +99,10 @@ validate_config() {
     validate_nonempty_path "LFS" "$LFS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
+    [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
+    [ "$LFS" != "/home" ] || die "LFS cannot be /home"
+    [ "$LFS" != "/mnt" ] || die "LFS cannot be /mnt"
+    [ "$LFS" != "/root" ] || die "LFS cannot be /root"
 
     derive_partitions
 
@@ -127,7 +148,9 @@ run_lfs_phase() {
 # load settings.conf
 load_config
 LOG_FILE="$LFS/logs/lfs"
-
+GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
+[ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
+[ -x "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
 
 
 # Enter chroot and run phase 1 install scripts
@@ -137,8 +160,8 @@ printf "\n${MAGENTA}Running phase 1.${RESET}\n\n"
 run_lfs_phase 1
 
 printf "${MAGENTA}Installing glibc...${RESET}\n"
-"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
-"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
+"$GRAFT_BIN" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
+"$GRAFT_BIN" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
 printf "${GREEN}Install successful!${RESET}\n"
 
 
@@ -149,8 +172,8 @@ printf "\n${MAGENTA}Running phase 2.${RESET}\n\n"
 run_lfs_phase 2
 
 printf "${MAGENTA}Installing ncurses...${RESET}\n"
-"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
-"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
+"$GRAFT_BIN" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
+"$GRAFT_BIN" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
 printf "${GREEN}Install successful!${RESET}\n"
 
 
@@ -161,8 +184,8 @@ printf "\n${MAGENTA}Running phase 3.${RESET}\n\n"
 run_lfs_phase 3
 
 printf "${MAGENTA}Installing perl...${RESET}\n"
-"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
-"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
+"$GRAFT_BIN" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
+"$GRAFT_BIN" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
 printf "${GREEN}Install successful!${RESET}\n"
 
 

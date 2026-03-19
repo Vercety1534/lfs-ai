@@ -29,16 +29,33 @@ die() {
     exit 1
 }
 
+validate_placeholder() {
+    local name="$1"
+    local value="$2"
+
+    case "$value" in
+        REPLACE_ME|/dev/REPLACE_ME)
+            die "$name is still set to a placeholder value."
+            ;;
+    esac
+}
+
 validate_drive_name() {
     local value="$1"
 
-    [ -n "$value" ] || die "DRIVE is empty."
+    validate_placeholder "DRIVE" "$value"
 
     case "$value" in
-        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+        /dev/sd[a-z]|/dev/vd[a-z]|/dev/xvd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
             ;;
         *)
-            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            die "DRIVE must be a whole disk like /dev/sda, /dev/vda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    case "$value" in
+        /dev/sd[a-z][0-9]|/dev/vd[a-z][0-9]|/dev/xvd[a-z][0-9]|/dev/nvme[0-9]n[0-9]p[0-9]|/dev/mmcblk[0-9]p[0-9])
+            die "DRIVE must be a whole disk, not a partition. Got: $value"
             ;;
     esac
 
@@ -67,7 +84,7 @@ derive_partitions() {
             SWAP="${DRIVE}p2"
             MAIN="${DRIVE}p3"
             ;;
-        /dev/sd*)
+        /dev/sd*|/dev/vd*|/dev/xvd*)
             EFI="${DRIVE}1"
             SWAP="${DRIVE}2"
             MAIN="${DRIVE}3"
@@ -84,6 +101,10 @@ validate_config() {
     validate_nonempty_path "LFS" "$LFS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
+    [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
+    [ "$LFS" != "/home" ] || die "LFS cannot be /home"
+    [ "$LFS" != "/mnt" ] || die "LFS cannot be /mnt"
+    [ "$LFS" != "/root" ] || die "LFS cannot be /root"
 
     derive_partitions
 
@@ -137,6 +158,9 @@ ensure_lfs_layout_and_mounts() {
     [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
     [ -b "$MAIN" ] || die "MAIN partition does not exist: $MAIN"
 
+    [ -d "$LFS" ] || mkdir -p "$LFS"
+    [ -d "$LFS/boot" ] || mkdir -p "$LFS/boot"
+
     ensure_mount_source "$MAIN" "$LFS"      mount "$MAIN" "$LFS"
     ensure_mount_source "$EFI"  "$LFS/boot" mount "$EFI" "$LFS/boot"
     ensure_swap
@@ -149,6 +173,8 @@ ensure_lfs_layout_and_mounts() {
 if [ "${1:-}" != "--as-lfs" ]; then
     load_config
     ensure_lfs_layout_and_mounts
+    id lfs >/dev/null 2>&1 || die "User lfs does not exist. Run prepare first."
+    [ -f /home/lfs/.bashrc ] || die "Missing /home/lfs/.bashrc. Run prepare first."
     exec runuser -u lfs -- /bin/bash "$SCRIPT_PATH" --as-lfs
 fi
 

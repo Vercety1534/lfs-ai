@@ -41,16 +41,33 @@ die() {
     exit 1
 }
 
+validate_placeholder() {
+    local name="$1"
+    local value="$2"
+
+    case "$value" in
+        REPLACE_ME|/dev/REPLACE_ME)
+            die "$name is still set to a placeholder value."
+            ;;
+    esac
+}
+
 validate_drive_name() {
     local value="$1"
 
-    [ -n "$value" ] || die "DRIVE is empty."
+    validate_placeholder "DRIVE" "$value"
 
     case "$value" in
-        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+        /dev/sd[a-z]|/dev/vd[a-z]|/dev/xvd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
             ;;
         *)
-            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            die "DRIVE must be a whole disk like /dev/sda, /dev/vda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    case "$value" in
+        /dev/sd[a-z][0-9]|/dev/vd[a-z][0-9]|/dev/xvd[a-z][0-9]|/dev/nvme[0-9]n[0-9]p[0-9]|/dev/mmcblk[0-9]p[0-9])
+            die "DRIVE must be a whole disk, not a partition. Got: $value"
             ;;
     esac
 
@@ -60,22 +77,67 @@ validate_drive_name() {
 validate_size() {
     local name="$1"
     local value="$2"
+    local number
 
     [ -n "$value" ] || die "$name is empty."
 
     case "$value" in
-        *[!0-9KMGTP]*|"")
-            die "$name must be a size like 512M, 2G, 64G. Got: $value"
+        *[!0-9KMGT]*|"")
+            die "$name must be a size like 512M, 2G, or 64G. Got: $value"
             ;;
     esac
 
     case "$value" in
-        *[KMGTP])
+        *[KMGT])
             ;;
         *)
-            die "$name must end in K, M, G, T, or P. Got: $value"
+            die "$name must end in K, M, G, or T. Got: $value"
             ;;
     esac
+
+    number="${value%[KMGT]}"
+
+    [ -n "$number" ] || die "$name is missing a numeric value. Got: $value"
+
+    case "$number" in
+        *[!0-9]*)
+            die "$name must begin with digits. Got: $value"
+            ;;
+    esac
+
+    [ "$number" -gt 0 ] || die "$name must be greater than 0. Got: $value"
+}
+
+validate_min_size() {
+    local name="$1"
+    local value="$2"
+    local min_num="$3"
+    local min_unit="$4"
+    local number unit value_mib min_mib
+
+    number="${value%[KMGT]}"
+    unit="${value##*[0-9]}"
+
+    case "$unit" in
+        K) value_mib=$((number / 1024)) ;;
+        M) value_mib="$number" ;;
+        G) value_mib=$((number * 1024)) ;;
+        T) value_mib=$((number * 1024 * 1024)) ;;
+        *)
+            die "$name has unsupported unit: $unit"
+            ;;
+    esac
+
+    case "$min_unit" in
+        M) min_mib="$min_num" ;;
+        G) min_mib=$((min_num * 1024)) ;;
+        T) min_mib=$((min_num * 1024 * 1024)) ;;
+        *)
+            die "Internal error: unsupported minimum unit $min_unit for $name"
+            ;;
+    esac
+
+    [ "$value_mib" -ge "$min_mib" ] || die "$name must be at least ${min_num}${min_unit}. Got: $value"
 }
 
 validate_nonempty_path() {
@@ -97,7 +159,9 @@ validate_password() {
     local name="$1"
     local value="$2"
 
+    validate_placeholder "$name" "$value"
     [ -n "$value" ] || die "$name is empty."
+    [ "${#value}" -ge 8 ] || die "$name must be at least 8 characters long."
 }
 
 derive_partitions() {
@@ -107,7 +171,7 @@ derive_partitions() {
             SWAP="${DRIVE}p2"
             MAIN="${DRIVE}p3"
             ;;
-        /dev/sd*)
+        /dev/sd*|/dev/vd*|/dev/xvd*)
             EFI="${DRIVE}1"
             SWAP="${DRIVE}2"
             MAIN="${DRIVE}3"
@@ -120,8 +184,12 @@ derive_partitions() {
 
 validate_config() {
     validate_drive_name "$DRIVE"
+
     validate_size "EFI_SIZE" "$EFI_SIZE"
+    validate_min_size "EFI_SIZE" "$EFI_SIZE" 512 "M"
+
     validate_size "SWAP_SIZE" "$SWAP_SIZE"
+    validate_min_size "SWAP_SIZE" "$SWAP_SIZE" 1 "G"
 
     validate_nonempty_path "LFS" "$LFS"
 
@@ -129,6 +197,10 @@ validate_config() {
     validate_password "ROOT_PASS" "$ROOT_PASS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
+    [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
+    [ "$LFS" != "/home" ] || die "LFS cannot be /home"
+    [ "$LFS" != "/mnt" ] || die "LFS cannot be /mnt"
+    [ "$LFS" != "/root" ] || die "LFS cannot be /root"
 
     derive_partitions
 
@@ -149,6 +221,69 @@ load_config() {
 
 
 
+# Host system safety check
+get_parent_disk() {
+    local dev="$1"
+    local pkname
+
+    [ -n "$dev" ] || return 1
+    pkname="$(lsblk -no PKNAME "$dev" 2>/dev/null | head -n1)" || return 1
+
+    if [ -n "$pkname" ]; then
+        printf '/dev/%s\n' "$pkname"
+    else
+        printf '%s\n' "$dev"
+    fi
+}
+
+ensure_not_system_disk() {
+    local root_src boot_src efi_src
+    local root_disk boot_disk efi_disk
+
+    root_src="$(findmnt -n -o SOURCE / 2>/dev/null || true)"
+    boot_src="$(findmnt -n -o SOURCE /boot 2>/dev/null || true)"
+    efi_src="$(findmnt -n -o SOURCE /boot/efi 2>/dev/null || true)"
+
+    root_disk="$(get_parent_disk "$root_src" || true)"
+    boot_disk="$(get_parent_disk "$boot_src" || true)"
+    efi_disk="$(get_parent_disk "$efi_src" || true)"
+
+    [ -z "$root_disk" ] || [ "$DRIVE" != "$root_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted / filesystem: $DRIVE"
+    [ -z "$boot_disk" ] || [ "$DRIVE" != "$boot_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted /boot filesystem: $DRIVE"
+    [ -z "$efi_disk" ] || [ "$DRIVE" != "$efi_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted /boot/efi filesystem: $DRIVE"
+}
+
+release_drive_usage() {
+    local part mountpoint
+
+    ensure_not_system_disk
+
+    while read -r part mountpoint; do
+        [ -n "$part" ] || continue
+
+        if [ -n "$mountpoint" ]; then
+            printf "Unmounting %s from %s\n" "$part" "$mountpoint"
+            umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
+        fi
+    done < <(lsblk -nrpo NAME,MOUNTPOINT "$DRIVE")
+
+    while read -r part; do
+        [ -n "$part" ] || continue
+        case "$part" in
+            "$DRIVE"|"$DRIVE"[0-9]|"$DRIVE"p[0-9]|"$DRIVE"[0-9][0-9]|"$DRIVE"p[0-9][0-9])
+                printf "Disabling swap on %s\n" "$part"
+                swapoff "$part" || die "Failed to disable swap on $part"
+                ;;
+        esac
+    done < <(swapon --noheadings --raw --output NAME 2>/dev/null || true)
+
+    partprobe "$DRIVE" >/dev/null 2>&1 || true
+    udevadm settle >/dev/null 2>&1 || true
+}
+
+
+
+
 # Load settings.conf
 load_config
 
@@ -162,7 +297,7 @@ erase_drive() {
             nvme format --force "$DRIVE" -s 2 -n 1 >/dev/null 2>&1 || true
             wipefs -afq "$DRIVE"
             ;;
-        /dev/sd*|/dev/mmcblk*)
+        /dev/sd*|/dev/vd*|/dev/xvd*|/dev/mmcblk*)
             blkdiscard -f "$DRIVE" >/dev/null 2>&1 || true
             wipefs -afq "$DRIVE"
             ;;
@@ -175,6 +310,10 @@ erase_drive() {
 printf "${MAGENTA}Preparing drive...${RESET}\n\n"
 printf "${RED}WARNING:${RESET} This will erase all data on %s\n" "$DRIVE"
 prompt_confirm "Proceed with disk wipe and partitioning?"
+
+printf "${MAGENTA}Releasing any existing mounts or swap on target drive...${RESET}\n"
+release_drive_usage
+printf "${GREEN}Target drive is no longer mounted or used for swap.${RESET}\n"
 
 erase_drive
 printf "${GREEN}Wipe successful!${RESET}\n"
@@ -304,6 +443,8 @@ export LFS LC_ALL LFS_TGT PATH CONFIG_SITE
 export MAKEFLAGS=-j\$(nproc)
 EOF
 
-[ ! -e /etc/bash.bashrc ] || mv /etc/bash.bashrc /etc/bash.bashrc.NOUSE
+if [ -e /etc/bash.bashrc ] && [ ! -e /etc/bash.bashrc.NOUSE ]; then
+    mv /etc/bash.bashrc /etc/bash.bashrc.NOUSE
+fi
 
 printf "${GREEN}Environment setup successful! System preparation complete.${RESET}\n"
