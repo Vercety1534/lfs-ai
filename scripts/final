@@ -42,7 +42,7 @@ rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
 find /usr -depth -name "$(uname -m)-lfs-linux-gnu*" -exec rm -rf {} +
 
 if id tester &>/dev/null; then
-run_log userdel -fr tester
+    run_log userdel -fr tester
 fi
 
 printf "${GREEN}Clean-up successful!${RESET}\n\n"
@@ -71,7 +71,7 @@ printf "${GREEN}Creation successful!${RESET}\n\n"
 printf "${MAGENTA}Configuring network...${RESET}\n"
 cat > /etc/systemd/network/20-wired.network << "EOF"
 [Match]
-Name=en*
+Name=en* eth*
 
 [Link]
 RequiredForOnline=routable
@@ -289,10 +289,13 @@ EOF
 printf "${MAGENTA}Configuring limine...${RESET}\n"
 mountpoint -q /sys/firmware/efi/efivars || run_log mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 
+EFI_PARTNUM="$(lsblk -no PARTN "$EFI")"
+[ -n "$EFI_PARTNUM" ] || die "Failed to determine EFI partition number for $EFI"
+
 run_log efibootmgr                      \
       --create                          \
       --disk "$DRIVE"                   \
-      --part 1                          \
+      --part "$EFI_PARTNUM"             \
       --label "LFS Limine Boot Loader"  \
       --loader '\EFI\LFS\LIMINEX64.EFI' \
       --unicode
@@ -566,7 +569,7 @@ tty >/dev/null 2>&1 && export GPG_TTY="$(tty)"
 # End /etc/bashrc
 EOF
 
-cat > ~/.bash_profile << "EOF"
+cat > /root/.bash_profile << "EOF"
 # Begin ~/.bash_profile
 # Written for Beyond Linux From Scratch
 # by James Robertson <jameswrobertson@earthlink.net>
@@ -594,7 +597,7 @@ fi
 # End ~/.bash_profile
 EOF
 
-cat > ~/.profile << "EOF"
+cat > /root/.profile << "EOF"
 # Begin ~/.profile
 # Personal environment variables and startup programs.
 
@@ -608,7 +611,7 @@ fi
 # End ~/.profile
 EOF
 
-cat > ~/.bashrc << "EOF"
+cat > /root/.bashrc << "EOF"
 # Begin ~/.bashrc
 # Written for Beyond Linux From Scratch
 # by James Robertson <jameswrobertson@earthlink.net>
@@ -630,7 +633,7 @@ fi
 # End ~/.bashrc
 EOF
 
-cat > ~/.bash_logout << "EOF"
+cat > /root/.bash_logout << "EOF"
 # Begin ~/.bash_logout
 # Written for Beyond Linux From Scratch
 # by James Robertson <jameswrobertson@earthlink.net>

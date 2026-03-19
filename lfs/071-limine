@@ -41,7 +41,7 @@ cd "/sources/limine"
 printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
 run_log make
 
-rm -rf limeline.exe
+rm -f limine.exe
 
 run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/share/limine"
 run_log cp -v BOOT* "/usr/pkg/$PACKAGE/$VERSION/usr/share/limine/"
@@ -51,6 +51,9 @@ printf "${GREEN}Package successful!${RESET}\n"
 printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
 run_log graft -pDV "$PACKAGE/$VERSION"
 run_log graft -iV "$PACKAGE/$VERSION"
+
+run_log mkdir -pv /boot/EFI/BOOT
+run_log cp -v "/usr/pkg/$PACKAGE/$VERSION/usr/share/limine/BOOTX64.EFI" /boot/EFI/BOOT/BOOTX64.EFI
 
 run_log mkdir -pv /boot/EFI/LFS
 run_log cp -v "/usr/pkg/$PACKAGE/$VERSION/usr/share/limine/BOOTX64.EFI" /boot/EFI/LFS/LIMINEX64.EFI
