@@ -80,7 +80,6 @@ This file controls important install behavior such as:
 - EFI size
 - swap size
 - mount location
-- script location
 - passwords
 - other system-specific settings
 
