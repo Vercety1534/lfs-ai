@@ -1,6 +1,6 @@
 # Host Dependencies
 
-This project requires a properly prepared Linux host system before running lfs-ai.
+This project requires a properly prepared Linux host system before running LFS-AI.
 
 These dependencies are checked with:
 
@@ -108,7 +108,7 @@ For best results, the host system should:
 
 ## Important Notes
 
-- lfs-ai is designed for UEFI/EFI systems only
+- LFS-AI is designed for UEFI/EFI systems only
 - the automated install flow uses Limine instead of GRUB
 - some BLFS packages are included during the build process to reduce post-install setup work
 - incorrect `settings.conf` values can destroy data or overwrite the wrong disk
