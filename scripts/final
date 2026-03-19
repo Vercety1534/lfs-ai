@@ -56,6 +56,10 @@ EFIUUID="$(blkid -s UUID -o value "$EFI")"
 SWAPUUID="$(blkid -s UUID -o value "$SWAP")"
 MAINUUID="$(blkid -s UUID -o value "$MAIN")"
 
+[ -n "$EFIUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing EFI UUID${RESET}" >&2; exit 1; }
+[ -n "$SWAPUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing SWAP UUID${RESET}" >&2; exit 1; }
+[ -n "$MAINUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing MAIN UUID${RESET}" >&2; exit 1; }
+
 cat > /etc/fstab << EOF
 # <file system>                         <mount point>  <type>       <options>       <dump>  <pass>
 UUID=$EFIUUID                              /boot       vfat        defaults,umask=0077	0 2
@@ -212,6 +216,7 @@ printf "${MAGENTA}Installing Kernel $KERNELA...${RESET}\n"
 run_log cp -v "/sources/linux-$KERNELA.tar.xz" "/usr/src/linux-$KERNELA.tar.xz"
 cd /usr/src
 
+run_log rm -rf "/usr/src/linux-$KERNELA"
 run_log tar -xvf "linux-$KERNELA.tar.xz"
 run_log rm -rfv "linux-$KERNELA.tar.xz"
 cd "/usr/src/linux-$KERNELA"
@@ -231,6 +236,8 @@ run_log make modules_install
 run_log cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELA-lfs"
 run_log cp -vf System.map "/boot/System.map-$KERNELA"
 run_log cp -vf .config "/boot/config-$KERNELA"
+
+run_log rm -rf "/usr/share/doc/linux-$KERNELA"
 run_log cp -vr Documentation -T "/usr/share/doc/linux-$KERNELA"
 
 chown --quiet -R 0:0 "/usr/src/linux-$KERNELA"
@@ -244,6 +251,7 @@ printf "${MAGENTA}Installing Kernel $KERNELB...${RESET}\n"
 run_log cp -v "/sources/linux-$KERNELB.tar.gz" "/usr/src/linux-$KERNELB.tar.gz"
 cd /usr/src
 
+run_log rm -rf "/usr/src/linux-$KERNELB"
 run_log tar -xvf "linux-$KERNELB.tar.gz"
 run_log rm -rfv "linux-$KERNELB.tar.gz"
 cd "/usr/src/linux-$KERNELB"
@@ -263,6 +271,8 @@ run_log make modules_install
 run_log cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELB-lfs"
 run_log cp -vf System.map "/boot/System.map-$KERNELB"
 run_log cp -vf .config "/boot/config-$KERNELB"
+
+run_log rm -rf "/usr/share/doc/linux-$KERNELB"
 run_log cp -vr Documentation -T "/usr/share/doc/linux-$KERNELB"
 
 chown --quiet -R 0:0 "/usr/src/linux-$KERNELB"
@@ -287,20 +297,53 @@ EOF
 
 # Using Limine to Set Up the Boot Process
 printf "${MAGENTA}Configuring limine...${RESET}\n"
-mountpoint -q /sys/firmware/efi/efivars || run_log mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+mounted_efivars=0
+if ! mountpoint -q /sys/firmware/efi/efivars; then
+    run_log mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+    mounted_efivars=1
+fi
 
-EFI_PARTNUM="$(lsblk -no PARTN "$EFI")"
-[ -n "$EFI_PARTNUM" ] || die "Failed to determine EFI partition number for $EFI"
+BOOT_LABEL="LFS Limine Boot Loader"
+EFI_REL_PATH='\EFI\LFS\LIMINEX64.EFI'
+EFI_PART_NUM="$(lsblk -no PARTN "$EFI")"
 
+[ -n "$EFI_PART_NUM" ] || {
+    printf "%b\n" "${RED}[ERROR] Could not determine EFI partition number for $EFI${RESET}" >&2
+    exit 1
+}
+
+existing_ids="$(
+    efibootmgr | awk -v label="$BOOT_LABEL" '
+        index($0, label) {
+            if (match($1, /^Boot[0-9A-Fa-f]{4}/)) {
+                print substr($1, 5)
+            }
+        }
+    '
+)"
+
+if [ -n "$existing_ids" ]; then
+    printf "%b\n" "${BLUE}[INFO] Removing existing EFI boot entry/entries for '${BOOT_LABEL}'.${RESET}"
+    while IFS= read -r bootnum; do
+        [ -n "$bootnum" ] || continue
+        run_log efibootmgr --delete-bootnum --bootnum "$bootnum"
+    done <<< "$existing_ids"
+fi
+
+printf "%b\n" "${BLUE}[INFO] Creating EFI boot entry '${BOOT_LABEL}'.${RESET}"
 run_log efibootmgr                      \
       --create                          \
       --disk "$DRIVE"                   \
-      --part "$EFI_PARTNUM"             \
-      --label "LFS Limine Boot Loader"  \
-      --loader '\EFI\LFS\LIMINEX64.EFI' \
+      --part "$EFI_PART_NUM"            \
+      --label "$BOOT_LABEL"             \
+      --loader "$EFI_REL_PATH"          \
       --unicode
 
 ROOTPARTUUID="$(blkid -s PARTUUID -o value "$MAIN")"
+[ -n "$ROOTPARTUUID" ] || {
+    printf "%b\n" "${RED}[ERROR] Could not determine PARTUUID for $MAIN${RESET}" >&2
+    exit 1
+}
 
 cat > /boot/limine.conf << EOF
 timeout: 5
@@ -692,6 +735,8 @@ run_log systemctl enable systemd-resolved
 run_log systemctl enable systemd-networkd
 
 
-mountpoint -q /sys/firmware/efi/efivars && run_log umount /sys/firmware/efi/efivars
+if [ "$mounted_efivars" -eq 1 ]; then
+    run_log umount /sys/firmware/efi/efivars
+fi
 printf "${GREEN}Successful!${RESET}\n\n"
 
