@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Glibc
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=glibc
+VERSION=2.43
+TZVERSION=2026a
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase1/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.xz" >&2
+    exit 1
+}
+
+[ -f "/sources/glibc-fhs-1.patch" ] || {
+    printf "${RED}[ERROR] Missing patch: %s${RESET}\n" \
+        "/sources/glibc-fhs-1.patch" >&2
+    exit 1
+}
+
+[ -f "/sources/tzdata$TZVERSION.tar.gz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/tzdata$TZVERSION.tar.gz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.xz"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Patching %s...${RESET}\n" "$PACKAGE"
+run_log patch -Np1 -i ../glibc-fhs-1.patch
+printf "${GREEN}Patch successful!${RESET}\n"
+
+mkdir -p build
+cd       build
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf "rootsbindir=/usr/sbin\n" > configparms
+
+run_log ../configure --prefix=/usr                   \
+                     --disable-werror                \
+                     --disable-nscd                  \
+                     libc_cv_slibdir="/usr/lib"      \
+                     --enable-stack-protector=strong \
+                     --enable-kernel=6.6
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+touch /etc/ld.so.conf
+sed '/test-installation/s@$(PERL)@echo not running@' -i ../Makefile
+
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+
+sed '/RTLDLIST=/s@/usr@@g' -i "/usr/pkg/$PACKAGE/$VERSION/usr/bin/ldd"
+
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" localedata/install-locales
+printf "${GREEN}Package successful!${RESET}\n"
+
+cat > /etc/nsswitch.conf << "EOF"
+# Begin /etc/nsswitch.conf
+
+passwd: files systemd
+group: files systemd
+shadow: files systemd
+
+hosts: mymachines resolve [!UNAVAIL=return] files myhostname dns
+networks: files
+
+protocols: files
+services: files
+ethers: files
+rpc: files
+
+# End /etc/nsswitch.conf
+EOF
+
+printf "${MAGENTA}Packaging tzdata%s...${RESET}\n" "$TZVERSION"
+tar -xf "../../tzdata$TZVERSION.tar.gz"
+
+ZONEINFO="/usr/pkg/$PACKAGE/$VERSION/usr/share/zoneinfo"
+mkdir -p "$ZONEINFO"/{posix,right}
+
+for tz in etcetera southamerica northamerica europe africa antarctica  \
+          asia australasia backward; do
+    run_log zic -L /dev/null   -d "$ZONEINFO"       "${tz}"
+    run_log zic -L /dev/null   -d "$ZONEINFO/posix" "${tz}"
+    run_log zic -L leapseconds -d "$ZONEINFO/right" "${tz}"
+done
+
+run_log cp -v zone.tab zone1970.tab iso3166.tab "$ZONEINFO"
+run_log zic -d "$ZONEINFO" -p America/Toronto
+unset ZONEINFO tz
+
+ln -sf "/usr/pkg/$PACKAGE/$VERSION/usr/share/zoneinfo/America/Toronto" "/usr/pkg/$PACKAGE/$VERSION/etc/localtime"
+printf "${GREEN}Package successful!${RESET}\n\n\n"
+
+cat > /etc/ld.so.conf << "EOF"
+# Begin /etc/ld.so.conf
+/usr/local/lib
+/opt/lib
+
+EOF
+
+cat >> /etc/ld.so.conf << "EOF"
+# Add an include directory
+include /etc/ld.so.conf.d/*.conf
+
+EOF
+mkdir -p /etc/ld.so.conf.d
+
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
+dir
+EOF
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"
+

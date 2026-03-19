@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Shadow
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=shadow
+VERSION=4.19.4
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase2/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.xz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.xz"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+find man -name Makefile.in -exec sed -i 's/getspnam\.3 / /' {} \;
+find man -name Makefile.in -exec sed -i 's/passwd\.5 / /'   {} \;
+
+sed -e 's:#ENCRYPT_METHOD DES:ENCRYPT_METHOD YESCRYPT:' \
+    -e 's:/var/spool/mail:/var/mail:'                   \
+    -e '/PATH=/{s@/sbin:@@;s@/bin:@@}'                  \
+    -i etc/login.defs
+
+run_log touch /usr/bin/passwd
+run_log ./configure --sysconfdir=/etc   \
+                    --with-{b,yes}crypt \
+                    --without-libbsd    \
+                    --disable-logind    \
+                    --with-group-name-max-length=32
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" exec_prefix=/usr install
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" -C man install-man
+printf "${GREEN}Package successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+
+run_log pwconv
+run_log grpconv
+
+run_log mkdir -p /etc/default
+
+CURRENT_GID="$(useradd -D | awk -F= '/^GROUP=/ {print $2}')"
+
+if [ "$CURRENT_GID" != "999" ]; then
+    printf "Default useradd group is %s. Updating to 999.\n" "$CURRENT_GID"
+    run_log useradd -D --gid 999
+    printf "Default useradd group updated successfully.\n"
+else
+    printf "Default useradd group already set to 999.\n"
+fi
+
+printf "Setting root password...\n"
+printf 'root:%s\n' "$ROOT_PASS" | run_log chpasswd
+printf "Root password set successfully.\n"
+
+printf "\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Btrfs progs
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=btrfs-progs
+VERSION=6.19.1
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-v$VERSION.tar.xz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-v$VERSION.tar.xz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-v$VERSION"
+tar -xf "$PACKAGE-v$VERSION.tar.xz"
+cd "/sources/$PACKAGE-v$VERSION"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+run_log ./configure --prefix=/usr           \
+                    --disable-documentation
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+
+mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man5"
+mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8"
+
+for i in 5 8; do
+   run_log install -v Documentation/*."$i" "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man$i"
+done
+printf "${GREEN}Package successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-v$VERSION"

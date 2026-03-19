@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Make-ca
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=make-ca
+VERSION=1.16.1
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.gz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.gz"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+sed '/mktemp/s/-t //' -i make-ca
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+run_log install -vdm755 "/usr/pkg/$PACKAGE/$VERSION/etc/ssl/local"
+
+openssl x509 -in ../root.crt -text -fingerprint -setalias "CAcert Class 1 root" \
+        -addtrust serverAuth -addtrust emailProtection -addtrust codeSigning \
+        > "/usr/pkg/$PACKAGE/$VERSION/etc/ssl/local/CAcert_Class_1_root.pem"
+openssl x509 -in ../class3.crt -text -fingerprint -setalias "CAcert Class 3 root" \
+        -addtrust serverAuth -addtrust emailProtection -addtrust codeSigning \
+        > "/usr/pkg/$PACKAGE/$VERSION/etc/ssl/local/CAcert_Class_3_root.pem"
+
+mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/etc/profile.d"
+cat > "/usr/pkg/$PACKAGE/$VERSION/etc/profile.d/pythoncerts.sh" << "EOF"
+# Begin /etc/profile.d/pythoncerts.sh
+
+export _PIP_STANDALONE_CERT=/etc/pki/tls/certs/ca-bundle.crt
+
+# End /etc/profile.d/pythoncerts.sh
+EOF
+
+run_log mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/lib/systemd/system"
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/lib/systemd/system/make-ca-firstboot.service" << "EOF"
+[Unit]
+Description=Initialize CA trust store on first boot
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/make-ca/.initialized
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/make-ca -g
+ExecStart=/usr/sbin/make-ca -r
+ExecStart=/usr/bin/mkdir -p /var/lib/make-ca
+ExecStart=/usr/bin/touch /var/lib/make-ca/.initialized
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
+EOF
+printf "${GREEN}Package successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+run_log systemctl enable make-ca-firstboot.service
+run_log systemctl enable update-pki.timer
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"

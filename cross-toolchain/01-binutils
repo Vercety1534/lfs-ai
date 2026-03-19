@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Binutils-pass1 for the toolchain
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=binutils
+VERSION=2.46.0
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
+CONFIG_FILE="$base_dir/settings.conf"
+
+source "$CONFIG_FILE"
+
+# Log command
+LOG_FILE="$LFS/logs/toolchain/$PACKAGE-$VERSION-phase1.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -n "$LFS_TGT" ] || {
+    printf "${RED}[ERROR] LFS_TGT is not set.${RESET}\n" >&2
+    exit 1
+}
+
+[ -f "$LFS/sources/$PACKAGE-$VERSION.tar.xz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "$LFS/sources/$PACKAGE-$VERSION.tar.xz" >&2
+    exit 1
+}
+
+cd "$LFS/sources"
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.xz"
+cd "$LFS/sources/$PACKAGE-$VERSION"
+
+mkdir -p build
+cd       build
+
+printf "${MAGENTA}Configuring %s phase 1...${RESET}\n" "$PACKAGE"
+run_log ../configure --prefix="$LFS/tools"  \
+                     --with-sysroot="$LFS"  \
+                     --target="$LFS_TGT"    \
+                     --disable-nls          \
+                     --enable-plugins       \
+                     --enable-lto           \
+                     --disable-werror       \
+                     --enable-new-dtags     \
+                     --enable-default-hash-style=gnu
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s phase 1...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s phase 1...${RESET}\n" "$PACKAGE"
+run_log make install
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd "$LFS/sources"
+rm -rf "$PACKAGE-$VERSION"

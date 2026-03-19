@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# LFS-AI - Download Script
+# Purpose: Download the required source packages
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+umask 022
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
+CONFIG_FILE="$base_dir/settings.conf"
+LOG_FILE="$base_dir/lists/download.log"
+: > "$LOG_FILE"
+
+MAX_RETRIES=3
+RETRY_DELAY=5
+COUNT=0
+
+
+
+
+# Validate settings
+die() {
+    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
+    exit 1
+}
+
+validate_drive_name() {
+    local value="$1"
+
+    [ -n "$value" ] || die "DRIVE is empty."
+
+    case "$value" in
+        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+            ;;
+        *)
+            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
+}
+
+validate_nonempty_path() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+
+    case "$value" in
+        /*)
+            ;;
+        *)
+            die "$name must be an absolute path. Got: $value"
+            ;;
+    esac
+}
+
+derive_partitions() {
+    case "$DRIVE" in
+        /dev/nvme*|/dev/mmcblk*)
+            MAIN="${DRIVE}p3"
+            ;;
+        /dev/sd*)
+            MAIN="${DRIVE}3"
+            ;;
+        *)
+            die "Unsupported DRIVE format: $DRIVE"
+            ;;
+    esac
+}
+
+validate_config() {
+    validate_drive_name "$DRIVE"
+
+    validate_nonempty_path "LFS" "$LFS"
+
+    [ "$LFS" != "/" ] || die "LFS cannot be /"
+
+    derive_partitions
+}
+
+load_config() {
+    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
+
+    source "$CONFIG_FILE"
+
+    validate_config
+    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
+}
+
+
+
+
+# Validate mountpoints
+ensure_mount_source() {
+    local source="$1"
+    local target="$2"
+    shift 2
+
+    if mountpoint -q "$target"; then
+        if findmnt -nr -o SOURCE --target "$target" | grep -qx "$source"; then
+            printf "${GREEN}OK:${RESET}    %s is mounted on %s.\n" "$source" "$target"
+        else
+            die "$target is already mounted, but not from $source"
+        fi
+    else
+        "$@" || die "Failed to mount $source on $target"
+    fi
+}
+
+
+
+
+# Load settings.conf and verify mounts
+load_config
+
+[ -b "$MAIN" ] || die "MAIN partition does not exist: $MAIN"
+ensure_mount_source "$MAIN" "$LFS" mount "$MAIN" "$LFS"
+[ -f "$base_dir/lists/wget-list" ] || die "Missing download list: $base_dir/lists/wget-list"
+[ -d "$LFS/sources" ] || die "Missing sources directory: $LFS/sources"
+
+
+
+
+# Download packages
+printf "\n${MAGENTA}Starting downloads...${RESET}\n\n"
+printf "Download started: %s\n" "$(date '+%F %T')" >> "$LOG_FILE"
+
+while IFS= read -r url || [ -n "$url" ]; do
+    case "$url" in
+        ''|\#*) continue ;;
+    esac
+
+    COUNT=0
+    while [ "$COUNT" -lt "$MAX_RETRIES" ]; do
+        printf "Attempt %s for %s at %s\n" \
+            "$((COUNT + 1))" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
+
+        if wget -q --show-progress \
+            --no-clobber \
+            --continue \
+            --directory-prefix="$LFS/sources" \
+            "$url"
+        then
+            printf "SUCCESS %s at %s\n" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
+            break
+        fi
+
+        COUNT=$((COUNT + 1))
+        printf "FAILED attempt %s for %s at %s\n" \
+            "$COUNT" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
+
+        if [ "$COUNT" -lt "$MAX_RETRIES" ]; then
+            printf "\n${RED}ERROR:${RESET} Failed: %s\n" "$url"
+            printf "${MAGENTA}Retrying in %s seconds...${RESET}\n" "$RETRY_DELAY"
+            sleep "$RETRY_DELAY"
+        else
+            printf "ABORTED after %s attempts: %s\n" \
+                "$MAX_RETRIES" "$url" >> "$LOG_FILE"
+            die "Maximum retries reached. Failed download: $url. Log file: $LOG_FILE"
+        fi
+    done
+done < "$base_dir/lists/wget-list"
+
+chown --quiet -R root:root "$LFS/sources"
+printf "Download completed: %s\n" "$(date '+%F %T')" >> "$LOG_FILE"
+printf "${BLUE}Logging to:${RESET} %s\n\n" "$LOG_FILE"
+printf "\n${GREEN}Download successful!${RESET}\n"
+

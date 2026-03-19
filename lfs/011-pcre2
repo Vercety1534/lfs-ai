@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Pcre2
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=pcre2
+VERSION=10.47
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase2/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.bz2" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.bz2" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.bz2"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+run_log ./configure --prefix=/usr                               \
+                    --docdir="/usr/share/doc/$PACKAGE-$VERSION" \
+                    --enable-unicode                            \
+                    --enable-jit                                \
+                    --enable-pcre2-16                           \
+                    --enable-pcre2-32                           \
+                    --enable-pcre2grep-libz                     \
+                    --enable-pcre2grep-libbz2                   \
+                    --enable-pcre2test-libreadline
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+printf "${GREEN}Package successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"

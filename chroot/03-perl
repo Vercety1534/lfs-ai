@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Perl for the toolchain
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=perl
+MAJOR_VERSION=5.42
+MINOR_VERSION=1
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/chroot/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION"
+tar -xf "$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz"
+cd "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+run_log sh Configure -des                                                     \
+                     -D prefix=/usr                                           \
+                     -D vendorprefix=/usr                                     \
+                     -D useshrplib                                            \
+                     -D privlib=/usr/lib/perl5/"$MAJOR_VERSION"/core_perl     \
+                     -D archlib=/usr/lib/perl5/"$MAJOR_VERSION"/core_perl     \
+                     -D sitelib=/usr/lib/perl5/"$MAJOR_VERSION"/site_perl     \
+                     -D sitearch=/usr/lib/perl5/"$MAJOR_VERSION"/site_perl    \
+                     -D vendorlib=/usr/lib/perl5/"$MAJOR_VERSION"/vendor_perl \
+                     -D vendorarch=/usr/lib/perl5/"$MAJOR_VERSION"/vendor_perl
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log make install
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION"

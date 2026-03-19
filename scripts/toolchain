@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# LFS-AI - Toolchain Script
+# Purpose: Install the toolchain
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+umask 022
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
+CONFIG_FILE="$base_dir/settings.conf"
+SCRIPT_PATH="$(readlink -f "$0")"
+
+
+
+
+# Validate settings
+die() {
+    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
+    exit 1
+}
+
+validate_drive_name() {
+    local value="$1"
+
+    [ -n "$value" ] || die "DRIVE is empty."
+
+    case "$value" in
+        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+            ;;
+        *)
+            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
+}
+
+validate_nonempty_path() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+
+    case "$value" in
+        /*)
+            ;;
+        *)
+            die "$name must be an absolute path. Got: $value"
+            ;;
+    esac
+}
+
+derive_partitions() {
+    case "$DRIVE" in
+        /dev/nvme*|/dev/mmcblk*)
+            EFI="${DRIVE}p1"
+            SWAP="${DRIVE}p2"
+            MAIN="${DRIVE}p3"
+            ;;
+        /dev/sd*)
+            EFI="${DRIVE}1"
+            SWAP="${DRIVE}2"
+            MAIN="${DRIVE}3"
+            ;;
+        *)
+            die "Unsupported DRIVE format: $DRIVE"
+            ;;
+    esac
+}
+
+validate_config() {
+    validate_drive_name "$DRIVE"
+
+    validate_nonempty_path "LFS" "$LFS"
+
+    [ "$LFS" != "/" ] || die "LFS cannot be /"
+
+    derive_partitions
+
+    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
+    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
+    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
+}
+
+load_config() {
+    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
+
+    source "$CONFIG_FILE"
+
+    validate_config
+    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
+}
+
+
+
+
+# Validate mountpoints
+ensure_mount_source() {
+    local source="$1"
+    local target="$2"
+    shift 2
+
+    if mountpoint -q "$target"; then
+        if findmnt -nr -o SOURCE --target "$target" | grep -qx "$source"; then
+            printf "${GREEN}OK:${RESET}    %s is mounted on %s.\n" "$source" "$target"
+        else
+            die "$target is already mounted, but not from $source"
+        fi
+    else
+        "$@" || die "Failed to mount $source on $target"
+    fi
+}
+
+ensure_swap() {
+    [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
+
+    if swapon --noheadings --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
+        printf "${GREEN}OK:${RESET}    %s swap is active.\n" "$SWAP"
+    else
+        swapon "$SWAP" || die "Failed to activate swap on $SWAP"
+        printf "${GREEN}OK:${RESET}    %s swap activated.\n" "$SWAP"
+    fi
+}
+
+ensure_lfs_layout_and_mounts() {
+    [ -b "$EFI" ]  || die "EFI partition does not exist: $EFI"
+    [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
+    [ -b "$MAIN" ] || die "MAIN partition does not exist: $MAIN"
+
+    ensure_mount_source "$MAIN" "$LFS"      mount "$MAIN" "$LFS"
+    ensure_mount_source "$EFI"  "$LFS/boot" mount "$EFI" "$LFS/boot"
+    ensure_swap
+}
+
+
+
+
+# Change user to lfs
+if [ "${1:-}" != "--as-lfs" ]; then
+    load_config
+    ensure_lfs_layout_and_mounts
+    exec runuser -u lfs -- /bin/bash "$SCRIPT_PATH" --as-lfs
+fi
+
+source /home/lfs/.bashrc
+
+
+
+
+rm -rf "$LFS/logs/toolchain"
+mkdir -p "$LFS/logs/toolchain"
+
+# Run install scripts
+for script in "$base_dir"/cross-toolchain/*; do
+    if [ -f "$script" ] && [ -x "$script" ]; then
+        bash "$script"
+    fi
+done

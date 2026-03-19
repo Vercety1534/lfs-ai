@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+# LFS-AI - Prepare Script
+# Purpose: Prepare the host system and partition the drive
+# Safe rerun: No
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+umask 022
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
+CONFIG_FILE="$base_dir/settings.conf"
+
+
+
+
+# Validate settings
+prompt_confirm() {
+    local prompt="${1:-Continue?}"
+
+    while true; do
+        read -r -p "$prompt [y/N]: " REPLY
+        case "$REPLY" in
+            [yY]|[yY][eE][sS]) return 0 ;;
+            [nN]|[nN][oO]|"") die "Aborted by user." ;;
+            *) printf "${RED}ERROR:${RESET} invalid input\n" ;;
+        esac
+    done
+}
+
+die() {
+    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
+    exit 1
+}
+
+validate_drive_name() {
+    local value="$1"
+
+    [ -n "$value" ] || die "DRIVE is empty."
+
+    case "$value" in
+        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+            ;;
+        *)
+            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
+}
+
+validate_size() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+
+    case "$value" in
+        *[!0-9KMGTP]*|"")
+            die "$name must be a size like 512M, 2G, 64G. Got: $value"
+            ;;
+    esac
+
+    case "$value" in
+        *[KMGTP])
+            ;;
+        *)
+            die "$name must end in K, M, G, T, or P. Got: $value"
+            ;;
+    esac
+}
+
+validate_nonempty_path() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+
+    case "$value" in
+        /*)
+            ;;
+        *)
+            die "$name must be an absolute path. Got: $value"
+            ;;
+    esac
+}
+
+validate_password() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+}
+
+derive_partitions() {
+    case "$DRIVE" in
+        /dev/nvme*|/dev/mmcblk*)
+            EFI="${DRIVE}p1"
+            SWAP="${DRIVE}p2"
+            MAIN="${DRIVE}p3"
+            ;;
+        /dev/sd*)
+            EFI="${DRIVE}1"
+            SWAP="${DRIVE}2"
+            MAIN="${DRIVE}3"
+            ;;
+        *)
+            die "Unsupported DRIVE format: $DRIVE"
+            ;;
+    esac
+}
+
+validate_config() {
+    validate_drive_name "$DRIVE"
+    validate_size "EFI_SIZE" "$EFI_SIZE"
+    validate_size "SWAP_SIZE" "$SWAP_SIZE"
+
+    validate_nonempty_path "LFS" "$LFS"
+
+    validate_password "LFS_PASS" "$LFS_PASS"
+    validate_password "ROOT_PASS" "$ROOT_PASS"
+
+    [ "$LFS" != "/" ] || die "LFS cannot be /"
+
+    derive_partitions
+
+    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
+    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
+    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
+}
+
+load_config() {
+    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
+
+    source "$CONFIG_FILE"
+
+    validate_config
+    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
+}
+
+
+
+
+# Load settings.conf
+load_config
+
+
+
+
+# Wipe Drive
+erase_drive() {
+    case "$DRIVE" in
+        /dev/nvme*)
+            nvme format --force "$DRIVE" -s 2 -n 1 >/dev/null 2>&1 || true
+            wipefs -afq "$DRIVE"
+            ;;
+        /dev/sd*|/dev/mmcblk*)
+            blkdiscard -f "$DRIVE" >/dev/null 2>&1 || true
+            wipefs -afq "$DRIVE"
+            ;;
+        *)
+            die "Unsupported drive type: $DRIVE"
+            ;;
+    esac
+}
+
+printf "${MAGENTA}Preparing drive...${RESET}\n\n"
+printf "${RED}WARNING:${RESET} This will erase all data on %s\n" "$DRIVE"
+prompt_confirm "Proceed with disk wipe and partitioning?"
+
+erase_drive
+printf "${GREEN}Wipe successful!${RESET}\n"
+
+
+# Create EFI | SWAP | 'Remaining' Linux partition
+printf "\n${MAGENTA}Partitioning drive...${RESET}\n"
+printf "label:gpt\n" | sfdisk -q --wipe always "$DRIVE"
+printf "size=$EFI_SIZE,type=uefi\n size=$SWAP_SIZE,type=swap\n size=+,type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n" | sfdisk -q "$DRIVE"
+
+for _ in 1 2 3 4 5; do
+    [ -b "$EFI" ] && [ -b "$SWAP" ] && [ -b "$MAIN" ] && break
+    sleep 1
+done
+
+[ -b "$EFI" ]  || die "EFI partition was not created: $EFI"
+[ -b "$SWAP" ] || die "SWAP partition was not created: $SWAP"
+[ -b "$MAIN" ] || die "MAIN partition was not created: $MAIN"
+printf "${GREEN}Partitioning successful!${RESET}\n"
+
+
+# Create File Systems
+printf "\n${MAGENTA}Formatting partitions...${RESET}\n"
+mkfs.fat -F 32 -n EFI "$EFI" > /dev/null 2>&1
+mkswap -L SWAP "$SWAP" > /dev/null 2>&1
+mkfs.ext4 -L LFS "$MAIN"  > /dev/null 2>&1
+printf "${GREEN}Format successful!${RESET}\n"
+
+
+printf "\n${MAGENTA}Mounting partitions...${RESET}\n"
+# Mount Main Partition
+mkdir -p "$LFS"
+mount "$MAIN" "$LFS"
+
+# Mount EFI Partition
+mkdir -p "$LFS/boot"
+mount "$EFI" "$LFS/boot"
+
+# Mount SWAP Partition
+swapon --discard "$SWAP"
+printf "${GREEN}Mount successful!${RESET}\n"
+
+
+# Fix permissions
+chown --quiet root:root "$LFS"
+chmod --quiet 755 "$LFS"
+
+
+# Create limited file directory
+printf "\n${MAGENTA}Creating limited file directory...${RESET}\n"
+mkdir -p "$LFS/sources"
+chmod --quiet a+wt "$LFS/sources"
+
+mkdir -p "$LFS/etc" "$LFS/logs" "$LFS/var" "$LFS/usr/bin" "$LFS/usr/sbin" "$LFS/usr/lib"
+
+for i in bin lib sbin; do
+  ln -sf "usr/$i" "$LFS/$i"
+done
+
+case $(uname -m) in
+  x86_64) mkdir -p "$LFS/lib64" ;;
+esac
+
+mkdir -p "$LFS/tools"
+printf "${GREEN}File creation successful!${RESET}\n"
+
+
+# Add the LFS user
+printf "\n${MAGENTA}Creating build user...${RESET}\n"
+if ! getent group lfs &>/dev/null; then
+    printf "Group lfs does not exist. Creating it now.\n"
+    groupadd lfs
+    if [ $? -eq 0 ]; then
+        printf "Group lfs created successfully.\n"
+    else
+        printf "Error creating group lfs. Check permissions.\n"
+    fi
+else
+    printf "Group lfs already exists.\n"
+fi
+
+if ! id lfs &>/dev/null; then
+    printf "User lfs does not exist. Creating account...\n"
+    useradd -s /bin/bash -g lfs -m -k /dev/null lfs
+    if [ $? -eq 0 ]; then
+        printf "User lfs created successfully.\n"
+        printf 'lfs:%s\n' "$LFS_PASS" | chpasswd
+    else
+        printf "Failed to create user lfs.\n"
+        exit 1
+    fi
+else
+    printf "User lfs already exists. No action taken.\n"
+fi
+printf "${GREEN}Build user creation successful!${RESET}\n"
+
+
+printf "\n${MAGENTA}Setting up the environment...${RESET}\n"
+# Fix permissions
+chown --quiet -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"
+
+case $(uname -m) in
+  x86_64) chown --quiet lfs "$LFS/lib64" ;;
+esac
+
+parent_dir="$(cd -- "$base_dir/.." && pwd)"
+setfacl -m u:lfs:rx "$parent_dir"
+setfacl -R -m u:lfs:rX "$base_dir"
+setfacl -R -d -m u:lfs:rX "$base_dir"
+
+# Setup the environment
+cat > /home/lfs/.bash_profile << "EOF"
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+EOF
+
+cat > /home/lfs/.bashrc << EOF
+set +h
+umask 022
+LFS=$LFS
+LC_ALL=POSIX
+LFS_TGT=\$(uname -m)-lfs-linux-gnu
+PATH=/usr/bin
+if [ ! -L /bin ]; then PATH=/bin:\$PATH; fi
+PATH=\$LFS/tools/bin:\$PATH
+CONFIG_SITE=\$LFS/usr/share/config.site
+export LFS LC_ALL LFS_TGT PATH CONFIG_SITE
+export MAKEFLAGS=-j\$(nproc)
+EOF
+
+[ ! -e /etc/bash.bashrc ] || mv /etc/bash.bashrc /etc/bash.bashrc.NOUSE
+
+printf "${GREEN}Environment setup successful! System preparation complete.${RESET}\n"

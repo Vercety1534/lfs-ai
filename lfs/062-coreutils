@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Coreutils
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=coreutils
+VERSION=9.10
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase4/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.xz" >&2
+    exit 1
+}
+
+[ -f "/sources/$PACKAGE-$VERSION-i18n-1.patch" ] || {
+    printf "${RED}[ERROR] Missing patch: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION-i18n-1.patch" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.xz"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Patching %s...${RESET}\n" "$PACKAGE"
+run_log patch -Np1 -i ../$PACKAGE-$VERSION-i18n-1.patch
+printf "${GREEN}Patch successful!${RESET}\n"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+run_log autoreconf -fv
+run_log automake -af
+FORCE_UNSAFE_CONFIGURE=1 run_log ./configure \
+                                 --prefix=/usr
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+
+mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/sbin"
+mv "/usr/pkg/$PACKAGE/$VERSION/usr/bin/chroot" "/usr/pkg/$PACKAGE/$VERSION/usr/sbin"
+
+mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8"
+mv "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1/chroot.1" "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8/chroot.8"
+sed -i 's/"1"/"8"/' "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8/chroot.8"
+printf "${GREEN}Package successful!${RESET}\n"
+
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
+dir
+EOF
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"

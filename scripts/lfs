@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# LFS-AI - LFS Install Script
+# Phase: All LFS Phases
+# Purpose: Install all phases of Linux from Scratch
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
+CONFIG_FILE="$base_dir/settings.conf"
+
+
+
+
+# Validate settings
+die() {
+    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
+    exit 1
+}
+
+validate_drive_name() {
+    local value="$1"
+
+    [ -n "$value" ] || die "DRIVE is empty."
+
+    case "$value" in
+        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+            ;;
+        *)
+            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
+}
+
+validate_nonempty_path() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+
+    case "$value" in
+        /*)
+            ;;
+        *)
+            die "$name must be an absolute path. Got: $value"
+            ;;
+    esac
+}
+
+derive_partitions() {
+    case "$DRIVE" in
+        /dev/nvme*|/dev/mmcblk*)
+            EFI="${DRIVE}p1"
+            SWAP="${DRIVE}p2"
+            MAIN="${DRIVE}p3"
+            ;;
+        /dev/sd*)
+            EFI="${DRIVE}1"
+            SWAP="${DRIVE}2"
+            MAIN="${DRIVE}3"
+            ;;
+        *)
+            die "Unsupported DRIVE format: $DRIVE"
+            ;;
+    esac
+}
+
+validate_config() {
+    validate_drive_name "$DRIVE"
+
+    validate_nonempty_path "LFS" "$LFS"
+
+    [ "$LFS" != "/" ] || die "LFS cannot be /"
+
+    derive_partitions
+
+    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
+    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
+    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
+}
+
+load_config() {
+    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
+
+    source "$CONFIG_FILE"
+
+    validate_config
+    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
+}
+
+
+
+
+# Phase wrapper
+run_lfs_phase() {
+    local phase="$1"
+
+    chroot "$LFS" /usr/bin/env -i \
+        HOME=/root \
+        TERM="$TERM" \
+        PS1='(lfs chroot) \u:\w\$ ' \
+        PATH=/usr/bin:/usr/sbin:/bin:/sbin \
+        MAKEFLAGS="-j$(nproc)" \
+        TESTSUITEFLAGS="-j$(nproc)" \
+        ADD_CFLAGS="${ADD_CFLAGS:-}" \
+        CFLAGS="${CFLAGS} ${ADD_CFLAGS:-}" \
+        CXXFLAGS="${CXXFLAGS} ${ADD_CFLAGS:-}" \
+        CPPFLAGS="${CPPFLAGS} ${ADD_CFLAGS:-}" \
+        ROOT_PASS="${ROOT_PASS:-}" \
+        /bin/bash "/lfs-ai/scripts/lfs-phase$phase"
+}
+
+
+
+
+# load settings.conf
+load_config
+LOG_FILE="$LFS/logs/lfs"
+
+
+
+# Enter chroot and run phase 1 install scripts
+printf "\n${MAGENTA}Running phase 1.${RESET}\n\n"
+[ -f "$LFS/lfs-ai/scripts/lfs-phase1" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase1"
+
+run_lfs_phase 1
+
+printf "${MAGENTA}Installing glibc...${RESET}\n"
+"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
+"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
+printf "${GREEN}Install successful!${RESET}\n"
+
+
+# Enter chroot and run phase 2 install scripts
+printf "\n${MAGENTA}Running phase 2.${RESET}\n\n"
+[ -f "$LFS/lfs-ai/scripts/lfs-phase2" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase2"
+
+run_lfs_phase 2
+
+printf "${MAGENTA}Installing ncurses...${RESET}\n"
+"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
+"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
+printf "${GREEN}Install successful!${RESET}\n"
+
+
+# Enter chroot and run phase 3 install scripts
+printf "\n${MAGENTA}Running phase 3.${RESET}\n\n"
+[ -f "$LFS/lfs-ai/scripts/lfs-phase3" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase3"
+
+run_lfs_phase 3
+
+printf "${MAGENTA}Installing perl...${RESET}\n"
+"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
+"$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
+printf "${GREEN}Install successful!${RESET}\n"
+
+
+# Enter chroot and run phase 4 install scripts
+printf "\n${MAGENTA}Running phase 4.${RESET}\n\n"
+[ -f "$LFS/lfs-ai/scripts/lfs-phase4" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase4"
+
+run_lfs_phase 4
+
+
+# Enter chroot and run phase 5 install scripts
+printf "\n${MAGENTA}Running phase 5.${RESET}\n\n"
+[ -f "$LFS/lfs-ai/scripts/lfs-phase5" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase5"
+
+run_lfs_phase 5
+

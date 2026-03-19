@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# LFS-AI - LFS Install Script
+# Phase: LFS Phase 2
+# Purpose: Install phase 2 of Linux from Scratch
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+cd /lfs-ai
+
+rm -rf /logs/lfs/phase2
+mkdir -p /logs/lfs/phase2
+
+[ -d /lfs-ai/lfs ] || {
+    printf "\033[31m[ERROR] Missing /lfs-ai/lfs\033[0m\n" >&2
+    exit 1
+}
+
+# Phase 2 install
+shopt -s nullglob
+
+for script in /lfs-ai/lfs/{004..029}-*; do
+    [ -f "$script" ] && [ -x "$script" ] && bash "$script"
+done

@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+# LFS-AI - Chroot Script
+# Purpose: Prepare the chroot environment
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+umask 022
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
+CONFIG_FILE="$base_dir/settings.conf"
+
+
+
+
+# Validate settings
+die() {
+    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
+    exit 1
+}
+
+validate_drive_name() {
+    local value="$1"
+
+    [ -n "$value" ] || die "DRIVE is empty."
+
+    case "$value" in
+        /dev/sd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
+            ;;
+        *)
+            die "DRIVE must be a disk like /dev/sda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
+            ;;
+    esac
+
+    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
+}
+
+validate_nonempty_path() {
+    local name="$1"
+    local value="$2"
+
+    [ -n "$value" ] || die "$name is empty."
+
+    case "$value" in
+        /*)
+            ;;
+        *)
+            die "$name must be an absolute path. Got: $value"
+            ;;
+    esac
+}
+
+derive_partitions() {
+    case "$DRIVE" in
+        /dev/nvme*|/dev/mmcblk*)
+            EFI="${DRIVE}p1"
+            SWAP="${DRIVE}p2"
+            MAIN="${DRIVE}p3"
+            ;;
+        /dev/sd*)
+            EFI="${DRIVE}1"
+            SWAP="${DRIVE}2"
+            MAIN="${DRIVE}3"
+            ;;
+        *)
+            die "Unsupported DRIVE format: $DRIVE"
+            ;;
+    esac
+}
+
+validate_config() {
+    validate_drive_name "$DRIVE"
+
+    validate_nonempty_path "LFS" "$LFS"
+
+    [ "$LFS" != "/" ] || die "LFS cannot be /"
+
+    derive_partitions
+
+    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
+    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
+    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
+}
+
+load_config() {
+    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
+
+    source "$CONFIG_FILE"
+
+    validate_config
+    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
+}
+
+
+
+
+# Validate mountpoints
+ensure_mounted() {
+    local target="$1"
+    shift
+
+    if mountpoint -q "$target"; then
+        printf "${GREEN}OK:${RESET}    %s is mounted.\n" "$target"
+    else
+        "$@" || die "Failed to mount $target"
+    fi
+}
+
+ensure_mount_source() {
+    local source="$1"
+    local target="$2"
+    shift 2
+
+    if mountpoint -q "$target"; then
+        if findmnt -nr -o SOURCE --target "$target" | grep -qx "$source"; then
+            printf "${GREEN}OK:${RESET}    %s is mounted on %s.\n" "$source" "$target"
+        else
+            die "$target is already mounted, but not from $source"
+        fi
+    else
+        "$@" || die "Failed to mount $source on $target"
+    fi
+}
+
+ensure_swap() {
+    [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
+
+    if swapon --noheadings --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
+        printf "${GREEN}OK:${RESET}    %s swap is active.\n" "$SWAP"
+    else
+        swapon "$SWAP" || die "Failed to activate swap on $SWAP"
+        printf "${GREEN}OK:${RESET}    %s swap activated.\n" "$SWAP"
+    fi
+}
+
+
+
+
+# Load settings.conf
+load_config
+
+# Verify Mounts
+printf "\n${MAGENTA}Verify mounts...${RESET}\n"
+[ -b "$EFI" ]  || die "EFI partition does not exist: $EFI"
+[ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
+[ -b "$MAIN" ] || die "MAIN partition does not exist: $MAIN"
+
+ensure_mount_source "$MAIN" "$LFS"      mount "$MAIN" "$LFS"
+ensure_mount_source "$EFI"  "$LFS/boot" mount "$EFI" "$LFS/boot"
+ensure_swap
+printf "${GREEN}Verification successful!${RESET}\n"
+
+
+
+
+# Copy scripts for chroot
+printf "\n${MAGENTA}Copying scripts...${RESET}\n"
+rm -rf "$LFS/lfs-ai"
+cp -a "$base_dir" "$LFS/lfs-ai"
+chown --quiet -R root:root "$LFS/lfs-ai"
+printf "${GREEN}Copy successful!${RESET}\n"
+
+# Fix permissions
+printf "\n${MAGENTA}Fixing permissions...${RESET}\n"
+chown --quiet --from lfs -R root:root "$LFS"/{usr,var,etc,logs,tools}
+
+case "$(uname -m)" in
+  x86_64) chown --quiet --from lfs -R root:root "$LFS/lib64" ;;
+esac
+printf "${GREEN}Permissions fixed!${RESET}\n"
+
+
+
+
+# Prepare virtual file system
+printf "\n${MAGENTA}Preparing virtual file system...${RESET}\n"
+
+mkdir -p "$LFS"/{dev,dev/pts,proc,sys,run}
+
+ensure_mounted "$LFS/dev"     mount --bind /dev "$LFS/dev"
+ensure_mounted "$LFS/dev/pts" mount -t devpts -o gid=5,mode=0620 devpts "$LFS/dev/pts"
+ensure_mounted "$LFS/proc"    mount -t proc proc "$LFS/proc"
+ensure_mounted "$LFS/sys"     mount -t sysfs sysfs "$LFS/sys"
+ensure_mounted "$LFS/run"     mount -t tmpfs tmpfs "$LFS/run"
+
+if mountpoint -q "$LFS/dev/shm"; then
+    printf "${GREEN}OK:${RESET}    %s is mounted.\n" "$LFS/dev/shm"
+else
+    if [ -h "$LFS/dev/shm" ]; then
+        install -d -m 1777 "$LFS$(realpath /dev/shm)" || die "Failed to create shared memory directory"
+    else
+        mount -t tmpfs -o nosuid,nodev tmpfs "$LFS/dev/shm" || die "Failed to mount $LFS/dev/shm"
+    fi
+fi
+
+printf "${GREEN}File system prepared!${RESET}\n"
+
+
+
+
+# Enter chroot and run install scripts
+[ -f "$LFS/lfs-ai/scripts/toolchain-chroot" ] || \
+    die "Missing chroot entry script: $LFS/lfs-ai/scripts/toolchain-chroot"
+
+[ -x "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
+
+printf "\n${MAGENTA}Entering chroot...${RESET}\n"
+chroot "$LFS" /usr/bin/env -i              \
+    HOME=/root                             \
+    TERM="$TERM"                           \
+    PS1='(lfs chroot) \u:\w\$ '            \
+    PATH=/usr/bin:/usr/sbin:/bin:/sbin     \
+    MAKEFLAGS="-j$(nproc)"                 \
+    TESTSUITEFLAGS="-j$(nproc)"            \
+    /bin/bash ./lfs-ai/scripts/toolchain-chroot

@@ -1,0 +1,694 @@
+#!/usr/bin/env bash
+# LFS-AI - Final Script
+# Purpose: Install kernel, config files, and clean up build system
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+KERNELA=6.19.8
+KERNELB=7.0-rc4
+LFS_VERSION=r13.0-4-systemd
+
+
+
+
+# Log command
+LOG_FILE="/logs/final.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+
+
+
+# Post install clean-up
+printf "${MAGENTA}Cleaning up temp files...${RESET}\n"
+rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
+
+find /usr -depth -name "$(uname -m)-lfs-linux-gnu*" -exec rm -rf {} +
+
+if id tester &>/dev/null; then
+run_log userdel -fr tester
+fi
+
+printf "${GREEN}Clean-up successful!${RESET}\n\n"
+
+
+
+
+# Gen fstab
+printf "${MAGENTA}Creating fstab...${RESET}\n"
+EFIUUID="$(blkid -s UUID -o value "$EFI")"
+SWAPUUID="$(blkid -s UUID -o value "$SWAP")"
+MAINUUID="$(blkid -s UUID -o value "$MAIN")"
+
+cat > /etc/fstab << EOF
+# <file system>                         <mount point>  <type>       <options>       <dump>  <pass>
+UUID=$EFIUUID                              /boot       vfat        defaults,umask=0077	0 2
+UUID=$SWAPUUID   swap        swap        defaults  	0 0
+UUID=$MAINUUID   /           ext4        defaults,relatime	0 1
+EOF
+printf "${GREEN}Creation successful!${RESET}\n\n"
+
+
+
+
+# DHCP Configuration
+printf "${MAGENTA}Configuring network...${RESET}\n"
+cat > /etc/systemd/network/20-wired.network << "EOF"
+[Match]
+Name=en*
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+DNS=1.1.1.1
+DNS=9.9.9.9
+DNS=8.8.8.8
+EOF
+
+ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
+
+
+
+# Configuring the system hostname
+printf "%s\n" "lfs" > /etc/hostname
+
+
+
+
+# Customizing the /etc/hosts File
+cat > /etc/hosts << "EOF"
+# Begin /etc/hosts
+
+127.0.0.1  localhost
+::1        localhost ip6-localhost ip6-loopback
+ff02::1    ip6-allnodes
+ff02::2    ip6-allrouters
+# This host address
+127.0.1.1  lfs
+
+# End /etc/hosts
+EOF
+printf "${GREEN}Configuration successful!${RESET}\n\n"
+
+
+
+
+# Configuring the Linux Console
+printf "${MAGENTA}Configuring console...${RESET}\n"
+cat > /etc/vconsole.conf << "EOF"
+KEYMAP=us
+FONT=Lat2-Terminus16
+EOF
+
+
+
+
+# Configuring the System Locale
+cat > /etc/locale.conf << "EOF"
+LANG=en_CA.UTF-8
+EOF
+
+
+
+
+# Creating the /etc/inputrc File
+cat > /etc/inputrc << "EOF"
+# Begin /etc/inputrc
+# Modified by Chris Lynn <roryo@roryo.dynup.net>
+
+# Allow the command prompt to wrap to the next line
+set horizontal-scroll-mode Off
+
+# Enable 8-bit input
+set meta-flag On
+set input-meta On
+
+# Turns off 8th bit stripping
+set convert-meta Off
+
+# Keep the 8th bit for display
+set output-meta On
+
+# none, visible or audible
+set bell-style none
+
+# All of the following map the escape sequence of the value
+# contained in the 1st argument to the readline specific functions
+"\eOd": backward-word
+"\eOc": forward-word
+
+# for linux console
+"\e[1~": beginning-of-line
+"\e[4~": end-of-line
+"\e[5~": beginning-of-history
+"\e[6~": end-of-history
+"\e[3~": delete-char
+"\e[2~": quoted-insert
+
+# for xterm
+"\eOH": beginning-of-line
+"\eOF": end-of-line
+
+# for Konsole
+"\e[H": beginning-of-line
+"\e[F": end-of-line
+
+# for bash-completions
+set show-all-if-ambiguous on
+set visible-stats on
+
+# End /etc/inputrc
+EOF
+
+
+
+
+# Creating the /etc/shells File
+cat > /etc/shells << "EOF"
+# Begin /etc/shells
+
+/bin/sh
+/bin/bash
+
+# End /etc/shells
+EOF
+
+
+
+
+# Working with Core Dumps 
+mkdir -p /etc/systemd/coredump.conf.d
+
+cat > /etc/systemd/coredump.conf.d/maxuse.conf << EOF
+[Coredump]
+MaxUse=5G
+EOF
+printf "${GREEN}Configuration successful!${RESET}\n\n"
+
+
+
+
+# Install linux-$KERNELA
+printf "${MAGENTA}Installing Kernel $KERNELA...${RESET}\n"
+run_log cp -v "/sources/linux-$KERNELA.tar.xz" "/usr/src/linux-$KERNELA.tar.xz"
+cd /usr/src
+
+run_log tar -xvf "linux-$KERNELA.tar.xz"
+run_log rm -rfv "linux-$KERNELA.tar.xz"
+cd "/usr/src/linux-$KERNELA"
+
+run_log make clean
+run_log make mrproper
+
+run_log cp -vf /lfs-ai/lists/config .config
+run_log make olddefconfig
+
+run_log make
+run_log make headers
+run_log make headers_install
+run_log make modules
+run_log make modules_install
+
+run_log cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELA-lfs"
+run_log cp -vf System.map "/boot/System.map-$KERNELA"
+run_log cp -vf .config "/boot/config-$KERNELA"
+run_log cp -vr Documentation -T "/usr/share/doc/linux-$KERNELA"
+
+chown --quiet -R 0:0 "/usr/src/linux-$KERNELA"
+printf "${GREEN}Install successful!${RESET}\n\n"
+
+
+
+
+# Install linux-$KERNELB
+printf "${MAGENTA}Installing Kernel $KERNELB...${RESET}\n"
+run_log cp -v "/sources/linux-$KERNELB.tar.gz" "/usr/src/linux-$KERNELB.tar.gz"
+cd /usr/src
+
+run_log tar -xvf "linux-$KERNELB.tar.gz"
+run_log rm -rfv "linux-$KERNELB.tar.gz"
+cd "/usr/src/linux-$KERNELB"
+
+run_log make clean
+run_log make mrproper
+
+run_log cp -vf /lfs-ai/lists/config .config
+run_log make olddefconfig
+
+run_log make
+run_log make headers
+run_log make headers_install
+run_log make modules
+run_log make modules_install
+
+run_log cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELB-lfs"
+run_log cp -vf System.map "/boot/System.map-$KERNELB"
+run_log cp -vf .config "/boot/config-$KERNELB"
+run_log cp -vr Documentation -T "/usr/share/doc/linux-$KERNELB"
+
+chown --quiet -R 0:0 "/usr/src/linux-$KERNELB"
+printf "${GREEN}Install successful!${RESET}\n\n"
+
+
+
+
+# Configuring Linux Module Load Order
+install -m755 -d /etc/modprobe.d
+cat > /etc/modprobe.d/usb.conf << "EOF"
+# Begin /etc/modprobe.d/usb.conf
+
+install ohci_hcd /sbin/modprobe ehci_hcd ; /sbin/modprobe -i ohci_hcd ; true
+install uhci_hcd /sbin/modprobe ehci_hcd ; /sbin/modprobe -i uhci_hcd ; true
+
+# End /etc/modprobe.d/usb.conf
+EOF
+
+
+
+
+# Using Limine to Set Up the Boot Process
+printf "${MAGENTA}Configuring limine...${RESET}\n"
+mountpoint -q /sys/firmware/efi/efivars || run_log mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+
+run_log efibootmgr                      \
+      --create                          \
+      --disk "$DRIVE"                   \
+      --part 1                          \
+      --label "LFS Limine Boot Loader"  \
+      --loader '\EFI\LFS\LIMINEX64.EFI' \
+      --unicode
+
+ROOTPARTUUID="$(blkid -s PARTUUID -o value "$MAIN")"
+
+cat > /boot/limine.conf << EOF
+timeout: 5
+remember_last_entry: yes
+
+/+LFS
+  //vmlinuz-$KERNELA-lfs
+    protocol: linux
+    kernel_path: boot():/vmlinuz-$KERNELA-lfs
+    cmdline: root=PARTUUID=$ROOTPARTUUID rw quiet loglevel=3 audit=0
+  //vmlinuz-$KERNELB-lfs
+    protocol: linux
+    kernel_path: boot():/vmlinuz-$KERNELB-lfs
+    cmdline: root=PARTUUID=$ROOTPARTUUID rw quiet loglevel=3 audit=0
+EOF
+printf "${GREEN}Configuration successful!${RESET}\n\n"
+
+
+
+
+# The End
+printf "${MAGENTA}Final configuration...${RESET}\n"
+printf "%s\n" "$LFS_VERSION" > /etc/lfs-release
+
+cat > /etc/lsb-release << EOF
+DISTRIB_ID="Linux From Scratch"
+DISTRIB_RELEASE="$LFS_VERSION"
+DISTRIB_CODENAME="Pioneer"
+DISTRIB_DESCRIPTION="Linux From Scratch"
+EOF
+
+cat > /etc/os-release << EOF
+NAME="Linux From Scratch"
+VERSION="$LFS_VERSION"
+ID=lfs
+PRETTY_NAME="Linux From Scratch $LFS_VERSION"
+VERSION_CODENAME="Pioneer"
+HOME_URL="https://www.linuxfromscratch.org/lfs/"
+RELEASE_TYPE="development"
+EOF
+
+cat > /etc/profile << "EOF"
+# Begin /etc/profile
+# Written for Beyond Linux From Scratch
+# by James Robertson <jameswrobertson@earthlink.net>
+# modifications by Dagmar d'Surreal <rivyqntzne@pbzpnfg.arg>
+
+# System wide environment variables and startup programs.
+
+# System wide aliases and functions should go in /etc/bashrc.  Personal
+# environment variables and startup programs should go into
+# ~/.bash_profile.  Personal aliases and functions should go into
+# ~/.bashrc.
+
+# Functions to help us manage paths.  Second argument is the name of the
+# path variable to be modified (default: PATH)
+pathremove () {
+        local IFS=':'
+        local NEWPATH
+        local DIR
+        local PATHVARIABLE=${2:-PATH}
+        for DIR in ${!PATHVARIABLE} ; do
+                if [ "$DIR" != "$1" ] ; then
+                  NEWPATH=${NEWPATH:+$NEWPATH:}$DIR
+                fi
+        done
+        export $PATHVARIABLE="$NEWPATH"
+}
+
+pathprepend () {
+        pathremove $1 $2
+        local PATHVARIABLE=${2:-PATH}
+        export $PATHVARIABLE="$1${!PATHVARIABLE:+:${!PATHVARIABLE}}"
+}
+
+pathappend () {
+        pathremove $1 $2
+        local PATHVARIABLE=${2:-PATH}
+        export $PATHVARIABLE="${!PATHVARIABLE:+${!PATHVARIABLE}:}$1"
+}
+
+export -f pathremove pathprepend pathappend
+
+# Set the initial path
+export PATH=/usr/bin
+
+# Attempt to provide backward compatibility with LFS earlier than 11
+if [ ! -L /bin ]; then
+        pathappend /bin
+fi
+
+if [ $EUID -eq 0 ] ; then
+        pathappend /usr/sbin
+        if [ ! -L /sbin ]; then
+                pathappend /sbin
+        fi
+        unset HISTFILE
+fi
+
+# Set up some environment variables.
+export HISTSIZE=1000
+export HISTIGNORE="&:[bf]g:exit"
+
+# Set some defaults for graphical systems
+export XDG_DATA_DIRS=${XDG_DATA_DIRS:-/usr/share}
+export XDG_CONFIG_DIRS=${XDG_CONFIG_DIRS:-/etc/xdg}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-$USER}
+
+for script in /etc/profile.d/*.sh ; do
+        if [ -r $script ] ; then
+                . $script
+        fi
+done
+
+unset script
+
+# End /etc/profile
+EOF
+
+install --directory --mode=0755 --owner=root --group=root /etc/profile.d
+
+cat > /etc/profile.d/bash_completion.sh << "EOF"
+# shellcheck shell=sh disable=SC1091,SC2166,SC2268,SC3028,SC3044,SC3054
+# Check for interactive bash and that we haven't already been sourced.
+if [ "x${BASH_VERSION-}" != x -a "x${PS1-}" != x -a "x${BASH_COMPLETION_VERSINFO-}" = x ]; then
+
+    # Check for recent enough version of bash.
+    if [ "${BASH_VERSINFO[0]}" -gt 4 ] ||
+        [ "${BASH_VERSINFO[0]}" -eq 4 -a "${BASH_VERSINFO[1]}" -ge 2 ]; then
+        [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/bash_completion" ] &&
+            . "${XDG_CONFIG_HOME:-$HOME/.config}/bash_completion"
+        if shopt -q progcomp && [ -r /usr/share/bash-completion/bash_completion ]; then
+            # Source completion code.
+            . /usr/share/bash-completion/bash_completion
+        fi
+    fi
+
+fi
+
+EOF
+
+install --directory --mode=0755 --owner=root --group=root /etc/bash_completion.d
+
+cat > /etc/profile.d/dircolors.sh << "EOF"
+# Setup for /bin/ls and /bin/grep to support color, the alias is in /etc/bashrc.
+if [ -f "/etc/dircolors" ] ; then
+        eval $(dircolors -b /etc/dircolors)
+fi
+
+if [ -f "$HOME/.dircolors" ] ; then
+        eval $(dircolors -b $HOME/.dircolors)
+fi
+EOF
+
+cat > /etc/profile.d/extrapaths.sh << "EOF"
+if [ -d /usr/local/lib/pkgconfig ] ; then
+        pathappend /usr/local/lib/pkgconfig PKG_CONFIG_PATH
+fi
+if [ -d /usr/local/bin ]; then
+        pathprepend /usr/local/bin
+fi
+if [ -d /usr/local/sbin -a $EUID -eq 0 ]; then
+        pathprepend /usr/local/sbin
+fi
+
+if [ -d /usr/local/share ]; then
+        pathprepend /usr/local/share XDG_DATA_DIRS
+fi
+
+# Set some defaults before other applications add to these paths.
+pathappend /usr/share/info INFOPATH
+EOF
+
+cat > /etc/profile.d/readline.sh << "EOF"
+# Set up the INPUTRC environment variable.
+if [ -z "$INPUTRC" -a ! -f "$HOME/.inputrc" ] ; then
+        INPUTRC=/etc/inputrc
+fi
+export INPUTRC
+EOF
+
+cat > /etc/profile.d/umask.sh << "EOF"
+# By default, the umask should be set.
+if [ "$(id -gn)" = "$(id -un)" -a $EUID -gt 99 ] ; then
+  umask 002
+else
+  umask 022
+fi
+EOF
+
+cat > /etc/profile.d/i18n.sh << "EOF"
+# Set up i18n variables
+for i in $(locale); do
+  unset ${i%=*}
+done
+
+if [[ "$TERM" = linux ]]; then
+  export LANG=C.UTF-8
+else
+  source /etc/locale.conf
+
+  for i in $(locale); do
+    key=${i%=*}
+    if [[ -v $key ]]; then
+      export $key
+    fi
+  done
+fi
+EOF
+
+cat > /etc/bashrc << "EOF"
+# Begin /etc/bashrc
+# Written for Beyond Linux From Scratch
+# by James Robertson <jameswrobertson@earthlink.net>
+# updated by Bruce Dubbs <bdubbs@linuxfromscratch.org>
+
+# System wide aliases and functions.
+
+# System wide environment variables and startup programs should go into
+# /etc/profile.  Personal environment variables and startup programs
+# should go into ~/.bash_profile.  Personal aliases and functions should
+# go into ~/.bashrc
+
+# Provides colored /bin/ls and /bin/grep commands.
+
+if [ -f "/etc/dircolors" ] ; then
+        eval $(dircolors -b /etc/dircolors)
+fi
+
+if [ -f "$HOME/.dircolors" ] ; then
+        eval $(dircolors -b $HOME/.dircolors)
+fi
+
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+
+# Provides prompt for interactive shells, specifically shells started
+# in the X environment. [Review the LFS archive thread titled
+# PS1 Environment Variable for a great case study behind this script
+# addendum.]
+
+NORMAL="\[\e[0m\]"
+RED="\[\e[1;31m\]"
+PURPLE="\[\e[1;35m\]"
+BLUE="\[\e[1;34m\]"
+if [[ $EUID == 0 ]] ; then
+  PS1="$RED\u $BLUE\w $NORMAL\$ "
+else
+  PS1="$PURPLE\u $BLUE\w $NORMAL\$ "
+fi
+
+unset RED PURPLE BLUE NORMAL
+
+# Use bash-completion, if available, and avoid double-sourcing
+[[ $PS1 &&
+  ! ${BASH_COMPLETION_VERSINFO:-} &&
+  -f /usr/share/bash-completion/bash_completion ]] &&
+    . /usr/share/bash-completion/bash_completion
+
+# GnuPG wants this or it'll fail with pinentry-curses under some
+# circumstances (for example signing a Git commit)
+# Note that tty -s will "succeed" in LFS chroot environment so we cannot
+# use -s instead of redirecting to /dev/null.
+tty >/dev/null 2>&1 && export GPG_TTY="$(tty)"
+
+# End /etc/bashrc
+EOF
+
+cat > ~/.bash_profile << "EOF"
+# Begin ~/.bash_profile
+# Written for Beyond Linux From Scratch
+# by James Robertson <jameswrobertson@earthlink.net>
+# updated by Bruce Dubbs <bdubbs@linuxfromscratch.org>
+
+# Personal environment variables and startup programs.
+
+# Personal aliases and functions should go in ~/.bashrc.  System wide
+# environment variables and startup programs are in /etc/profile.
+# System wide aliases and functions are in /etc/bashrc.
+
+if [ -f "$HOME/.bashrc" ] ; then
+  source $HOME/.bashrc
+fi
+
+if [ -d "$HOME/bin" ] ; then
+  pathprepend $HOME/bin
+fi
+
+# Having . in the PATH is dangerous
+#if [ $EUID -gt 99 ]; then
+#  pathappend .
+#fi
+
+# End ~/.bash_profile
+EOF
+
+cat > ~/.profile << "EOF"
+# Begin ~/.profile
+# Personal environment variables and startup programs.
+
+if [ -d "$HOME/bin" ] ; then
+  pathprepend $HOME/bin
+fi
+
+# Set up user specific i18n variables
+#export LANG=<ll>_<CC>.<charmap><@modifiers>
+
+# End ~/.profile
+EOF
+
+cat > ~/.bashrc << "EOF"
+# Begin ~/.bashrc
+# Written for Beyond Linux From Scratch
+# by James Robertson <jameswrobertson@earthlink.net>
+
+# Personal aliases and functions.
+
+# Personal environment variables and startup programs should go in
+# ~/.bash_profile.  System wide environment variables and startup
+# programs are in /etc/profile.  System wide aliases and functions are
+# in /etc/bashrc.
+
+if [ -f "/etc/bashrc" ] ; then
+  source /etc/bashrc
+fi
+
+# Set up user specific i18n variables
+#export LANG=<ll>_<CC>.<charmap><@modifiers>
+
+# End ~/.bashrc
+EOF
+
+cat > ~/.bash_logout << "EOF"
+# Begin ~/.bash_logout
+# Written for Beyond Linux From Scratch
+# by James Robertson <jameswrobertson@earthlink.net>
+
+# Personal items to perform on logout.
+
+# End ~/.bash_logout
+EOF
+
+cat > /etc/issue << "EOF"
+\d \t
+
+Welcome to Linux From Scratch - Pioneer Edition!
+ 
+EOF
+printf "${GREEN}Configuration successful!${RESET}\n\n"
+
+
+
+# Make Skel files and services
+printf "${MAGENTA}Make skel files and network services...${RESET}\n"
+pushd /usr/share/info > /dev/null
+run_log rm -fv dir
+for f in *; do
+    install-info "$f" dir 2>/dev/null || true
+done
+popd > /dev/null
+
+dircolors -p > /etc/dircolors
+
+mkdir -p /root/Desktop
+mkdir -p /root/Documents
+mkdir -p /root/Downloads
+mkdir -p /root/Music
+mkdir -p /root/Pictures
+mkdir -p /root/Public
+mkdir -p /root/Templates
+mkdir -p /root/Videos
+mkdir -p /etc/skel/
+mkdir -p /etc/skel/Desktop
+mkdir -p /etc/skel/Documents
+mkdir -p /etc/skel/Downloads
+mkdir -p /etc/skel/Music
+mkdir -p /etc/skel/Pictures
+mkdir -p /etc/skel/Public
+mkdir -p /etc/skel/Templates
+mkdir -p /etc/skel/Videos
+cp /root/.profile /etc/skel/.profile
+cp /root/.bash_profile /etc/skel/.bash_profile
+cp /root/.bashrc /etc/skel/.bashrc
+cp /root/.bash_logout /etc/skel/.bash_logout
+dircolors -p > /etc/skel/.dircolors
+
+
+run_log systemctl enable systemd-resolved
+run_log systemctl enable systemd-networkd
+
+
+mountpoint -q /sys/firmware/efi/efivars && run_log umount /sys/firmware/efi/efivars
+printf "${GREEN}Successful!${RESET}\n\n"
+

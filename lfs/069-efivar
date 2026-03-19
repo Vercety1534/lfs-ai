@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Efivar
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=efivar
+VERSION=39
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase4/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.gz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.gz"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log make ENABLE_DOCS=0
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install ENABLE_DOCS=0 LIBDIR=/usr/lib
+
+run_log install -v -dm755 "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1"
+run_log install -vm644 docs/efivar.1 "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1"
+run_log install -v -dm755 "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man3"
+run_log install -vm644 docs/*.3      "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man3"
+printf "${GREEN}Package successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"

@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# LFS-AI - Build and install Systemd
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -e
+
+PACKAGE=systemd
+VERSION=259.5
+
+RED='\033[31m'
+GREEN='\033[32m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+RESET='\033[0m'
+
+# Log command
+LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+
+run_log() {
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/$PACKAGE-$VERSION.tar.gz" >&2
+    exit 1
+}
+
+[ -f "/sources/systemd-man-pages-$VERSION.tar.xz" ] || {
+    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
+        "/sources/systemd-man-pages-$VERSION.tar.xz" >&2
+    exit 1
+}
+
+cd /sources
+
+rm -rf "$PACKAGE-$VERSION"
+tar -xf "$PACKAGE-$VERSION.tar.gz"
+cd "/sources/$PACKAGE-$VERSION"
+
+printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+sed -e 's/GROUP="render"/GROUP="video"/' \
+    -e 's/GROUP="sgx", //'               \
+    -i rules.d/50-udev-default.rules.in
+
+mkdir -p build
+cd       build
+
+run_log meson setup ..                \
+              --prefix=/usr           \
+              --buildtype=release     \
+              -D default-dnssec=no    \
+              -D firstboot=false      \
+              -D install-tests=false  \
+              -D sysusers=false       \
+              -D rpmmacrosdir=no      \
+              -D homed=disabled       \
+              -D man=disabled         \
+              -D mode=release         \
+              -D pamconfdir=no        \
+              -D dev-kvm-mode=0660    \
+              -D nobody-group=nogroup \
+              -D sysupdate=disabled   \
+              -D ukify=disabled       \
+              -D docdir="/usr/share/doc/$PACKAGE-$VERSION"
+printf "${GREEN}Configuration successful!${RESET}\n"
+
+printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+run_log ninja
+printf "${GREEN}Build successful!${RESET}\n"
+
+printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+printf 'NAME="Linux From Scratch"\n' > /etc/os-release
+
+DESTDIR="/usr/pkg/$PACKAGE/$VERSION" run_log ninja install
+
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/share/man"
+run_log tar -xf "../../systemd-man-pages-$VERSION.tar.xz" \
+    --no-same-owner --strip-components=1     \
+    -C "/usr/pkg/$PACKAGE/$VERSION/usr/share/man"
+printf "${GREEN}Package successful!${RESET}\n"
+
+printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+run_log graft -pDV "$PACKAGE/$VERSION"
+run_log graft -iV "$PACKAGE/$VERSION"
+
+run_log systemd-machine-id-setup
+run_log systemctl preset-all
+printf "${GREEN}Install successful!${RESET}\n\n\n"
+
+cd /sources
+rm -rf "$PACKAGE-$VERSION"
