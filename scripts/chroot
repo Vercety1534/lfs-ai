@@ -155,14 +155,19 @@ ensure_swap() {
 ensure_bind_mount() {
     local source="$1"
     local target="$2"
+    local actual_source
     shift 2
 
     if mountpoint -q "$target"; then
-        if findmnt -nr -o SOURCE --target "$target" | grep -qx "$source"; then
-            printf "${GREEN}OK:${RESET}    %s is bind-mounted on %s.\n" "$source" "$target"
-        else
-            die "$target is already mounted, but not from $source"
-        fi
+        actual_source="$(findmnt -nr -o SOURCE --target "$target" 2>/dev/null || true)"
+        case "$actual_source" in
+            "$source"|"$source"[*])
+                printf "${GREEN}OK:${RESET}    %s is bind-mounted on %s.\n" "$source" "$target"
+                ;;
+            *)
+                printf "${GREEN}OK:${RESET}    %s is already mounted on %s.\n" "$actual_source" "$target"
+                ;;
+        esac
     else
         "$@" || die "Failed to bind-mount $source on $target"
     fi
@@ -216,11 +221,20 @@ printf "${GREEN}Copy successful!${RESET}\n"
 
 # Fix permissions
 printf "\n${MAGENTA}Fixing permissions...${RESET}\n"
-chown --quiet --from lfs -R root:root "$LFS"/{usr,var,etc,logs,tools}
+
+for path in "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"; do
+    [ -e "$path" ] || continue
+    chown --quiet --from=lfs -R root:root "$path"
+done
 
 case "$(uname -m)" in
-  x86_64) chown --quiet --from lfs -R root:root "$LFS/lib64" ;;
+  x86_64)
+    if [ -e "$LFS/lib64" ]; then
+        chown --quiet --from=lfs -R root:root "$LFS/lib64"
+    fi
+    ;;
 esac
+
 printf "${GREEN}Permissions fixed!${RESET}\n"
 
 
@@ -237,14 +251,11 @@ ensure_mount_fstype "$LFS/proc" "proc" mount -t proc proc "$LFS/proc"
 ensure_mount_fstype "$LFS/sys" "sysfs" mount -t sysfs sysfs "$LFS/sys"
 ensure_mount_fstype "$LFS/run" "tmpfs" mount -t tmpfs tmpfs "$LFS/run"
 
+mkdir -p "$LFS/dev/shm"
 if mountpoint -q "$LFS/dev/shm"; then
     printf "${GREEN}OK:${RESET}    %s is mounted.\n" "$LFS/dev/shm"
 else
-    if [ -h "$LFS/dev/shm" ]; then
-        install -d -m 1777 "$LFS$(realpath /dev/shm)" || die "Failed to create shared memory directory"
-    else
-        mount -t tmpfs -o nosuid,nodev tmpfs "$LFS/dev/shm" || die "Failed to mount $LFS/dev/shm"
-    fi
+    mount -t tmpfs -o nosuid,nodev tmpfs "$LFS/dev/shm" || die "Failed to mount $LFS/dev/shm"
 fi
 
 printf "${GREEN}File system prepared!${RESET}\n"
