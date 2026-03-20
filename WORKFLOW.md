@@ -37,7 +37,7 @@ If dependency verification reports missing packages, install them on the host sy
 
 You should also review [`DEPS.md`](DEPS.md) if needed.
 
-## Review and edit [`settings.conf`](settings.conf)
+## Review and edit `settings.conf`
 
 Check [`settings.conf`](settings.conf) carefully before doing anything destructive.
 
