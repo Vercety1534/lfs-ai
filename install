@@ -33,7 +33,6 @@ fi
 usage() {
     printf 'LFS-AI Installer v%s\n' "$VERSION"
     printf "\n"
-    printf "\n"
     printf "LFS-AI is an automated installer for Linux From Scratch.\n"
     printf "It can run the full install or individual stages.\n"
     printf "If a stage fails, troubleshoot it and continue from that point.\n"
