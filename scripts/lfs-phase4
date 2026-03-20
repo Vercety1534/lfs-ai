@@ -21,6 +21,14 @@ mkdir -p /logs/lfs/phase4
 # Phase 4 install
 shopt -s nullglob
 
+found_script=0
 for script in /lfs-ai/lfs/{043..072}-*; do
-    [ -f "$script" ] && [ -x "$script" ] && bash "$script"
+    [ -f "$script" ] && [ -x "$script" ] || continue
+    found_script=1
+    bash "$script"
 done
+
+[ "$found_script" -eq 1 ] || {
+    printf "\033[31m[ERROR] No executable phase 4 scripts found in /lfs-ai/lfs\033[0m\n" >&2
+    exit 1
+}

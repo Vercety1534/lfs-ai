@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # LFS-AI - Toolchain-Chroot Script
-# Purpose: Install remaining direcories and toolchain as chroot
+# Purpose: Install remaining directories and toolchain inside chroot
 # Safe rerun: Yes
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
@@ -109,8 +109,12 @@ users:x:999:
 nogroup:x:65534:
 EOF
 
-printf "tester:x:101:101::/home/tester:/bin/bash\n" >> /etc/passwd
-printf "tester:x:101:\n" >> /etc/group
+grep -q '^tester:' /etc/passwd || \
+    printf "tester:x:101:101::/home/tester:/bin/bash\n" >> /etc/passwd
+
+grep -q '^tester:' /etc/group || \
+    printf "tester:x:101:\n" >> /etc/group
+
 install -o tester -d /home/tester
 
 touch /var/log/{btmp,lastlog,faillog,wtmp}
@@ -130,11 +134,18 @@ printf "${GREEN}File creation successful!${RESET}\n\n"
 
 cd /lfs-ai
 
+found_script=0
 for script in /lfs-ai/chroot/*; do
     if [ -f "$script" ] && [ -x "$script" ]; then
+        found_script=1
         bash "$script"
     fi
 done
+
+[ "$found_script" -eq 1 ] || {
+    printf "${RED}ERROR:${RESET} No executable scripts found in /lfs-ai/chroot\n" >&2
+    exit 1
+}
 
 
 

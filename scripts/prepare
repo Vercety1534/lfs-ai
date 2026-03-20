@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LFS-AI - Prepare Script
 # Purpose: Prepare the host system and partition the drive
-# Safe rerun: No
+# Safe rerun: Conditionally (rerunnable, but always destructive)
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
@@ -194,7 +194,6 @@ validate_config() {
     validate_nonempty_path "LFS" "$LFS"
 
     validate_password "LFS_PASS" "$LFS_PASS"
-    validate_password "ROOT_PASS" "$ROOT_PASS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
     [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
@@ -284,12 +283,6 @@ release_drive_usage() {
 
 
 
-# Load settings.conf
-load_config
-
-
-
-
 # Wipe Drive
 erase_drive() {
     case "$DRIVE" in
@@ -307,6 +300,20 @@ erase_drive() {
     esac
 }
 
+
+
+
+# Load settings.conf
+load_config
+printf "\n${MAGENTA}Installation configuration:${RESET}\n"
+printf "Drive:           ${BLUE}%s${RESET}\n" "$DRIVE"
+printf "EFI partition:   ${BLUE}%s${RESET}\n" "$EFI"
+printf "SWAP partition:  ${BLUE}%s${RESET}\n" "$SWAP"
+printf "ROOT partition:  ${BLUE}%s${RESET}\n" "$MAIN"
+printf "EFI size:        ${BLUE}%s${RESET}\n" "$EFI_SIZE"
+printf "Swap size:       ${BLUE}%s${RESET}\n" "$SWAP_SIZE"
+printf "Mount point:     ${BLUE}%s${RESET}\n" "$LFS"
+
 printf "${MAGENTA}Preparing drive...${RESET}\n\n"
 printf "${RED}WARNING:${RESET} This will erase all data on %s\n" "$DRIVE"
 prompt_confirm "Proceed with disk wipe and partitioning?"
@@ -317,6 +324,8 @@ printf "${GREEN}Target drive is no longer mounted or used for swap.${RESET}\n"
 
 erase_drive
 printf "${GREEN}Wipe successful!${RESET}\n"
+
+
 
 
 # Create EFI | SWAP | 'Remaining' Linux partition
@@ -335,11 +344,13 @@ done
 printf "${GREEN}Partitioning successful!${RESET}\n"
 
 
+
+
 # Create File Systems
 printf "\n${MAGENTA}Formatting partitions...${RESET}\n"
 mkfs.fat -F 32 -n EFI "$EFI" > /dev/null 2>&1
 mkswap -L SWAP "$SWAP" > /dev/null 2>&1
-mkfs.ext4 -L LFS "$MAIN"  > /dev/null 2>&1
+mkfs.ext4 -F -L LFS "$MAIN"  > /dev/null 2>&1
 printf "${GREEN}Format successful!${RESET}\n"
 
 
@@ -355,6 +366,8 @@ mount "$EFI" "$LFS/boot"
 # Mount SWAP Partition
 swapon --discard "$SWAP"
 printf "${GREEN}Mount successful!${RESET}\n"
+
+
 
 
 # Fix permissions
@@ -379,6 +392,8 @@ esac
 
 mkdir -p "$LFS/tools"
 printf "${GREEN}File creation successful!${RESET}\n"
+
+
 
 
 # Add the LFS user

@@ -45,11 +45,9 @@ See `DEPS.md` for host system dependencies.
 
 ## Usage
 
-Run the installer with:
+Use `./install` with one of the commands below:
 
-`./install`
-
-**Basic Commands**
+**Primary Commands**
 
 ```text
 ./install -A    :  ALL   :   Complete install including drive partitioning
@@ -57,7 +55,7 @@ Run the installer with:
 ./install -h    :  Help  :   Display help message
 ```
 
-**Phased Commands**
+**Stage Commands**
 
 ```text
 ./install -s    : Step 1 :   Edit settings.conf (IMPORTANT - Failure to do so could destroy your system)

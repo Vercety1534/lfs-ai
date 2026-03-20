@@ -69,9 +69,14 @@ The host system should have the standard tools expected for an LFS build environ
 `Xz`                >= 5.0.0
 
 
-Kernel version with `CONFIG_UNIX98_PTYS=y`:
+Minimum kernel version:
 
 `Kernel`            >= 5.4
+
+
+Required kernel option:
+
+`CONFIG_UNIX98_PTYS=y`
 
 
 ## Required Command Aliases
@@ -85,7 +90,7 @@ The host system must also provide the following command mappings, normally throu
 `sh`               = `bash`
 
 
-## Required Host Features
+## Required Host Capabilities
 
 The host system should also support:
 

@@ -21,7 +21,7 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
@@ -74,4 +74,4 @@ run_log /usr/pkg/"$PACKAGE-$VERSION"/usr/bin/graft -iV "$PACKAGE-$VERSION"
 printf "${GREEN}Install successful!${RESET}\n\n\n"
 
 cd /sources
-rm -rf "$PACKAGE-$VERSION" "$VERSION.tar.gz"
+rm -rf "$PACKAGE-$VERSION"

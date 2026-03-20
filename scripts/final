@@ -13,33 +13,56 @@ BLUE='\033[34m'
 MAGENTA='\033[35m'
 RESET='\033[0m'
 
-KERNELA=6.19.8
+KERNELA=6.19.9
 KERNELB=7.0-rc4
-LFS_VERSION=r13.0-4-systemd
+LFS_VERSION=r13.0-5-systemd
 
 
 
 
 # Log command
-LOG_FILE="/logs/final.log"
-
 run_log() {
+    local LOG_FILE="/logs/final.log"
+    
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$1" "$LOG_FILE" >&2
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+run_log_kernela() {
+    local LOG_FILE="/logs/linux-$KERNELA.log"
+    
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        return 1
+    fi
+}
+
+run_log_kernelb() {
+    local LOG_FILE="/logs/linux-$KERNELB.log"
+    
+    if "$@" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
 
 
-
 # Post install clean-up
 printf "${MAGENTA}Cleaning up temp files...${RESET}\n"
-rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
+run_log rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
 
-find /usr -depth -name "$(uname -m)-lfs-linux-gnu*" -exec rm -rf {} +
+while IFS= read -r path; do
+    run_log rm -rf "$path"
+done < <(find /usr -depth -name "$(uname -m)-lfs-linux-gnu*")
 
 if id tester &>/dev/null; then
     run_log userdel -fr tester
@@ -213,34 +236,34 @@ printf "${GREEN}Configuration successful!${RESET}\n\n"
 
 # Install linux-$KERNELA
 printf "${MAGENTA}Installing Kernel $KERNELA...${RESET}\n"
-run_log cp -v "/sources/linux-$KERNELA.tar.xz" "/usr/src/linux-$KERNELA.tar.xz"
+run_log_kernela cp -v "/sources/linux-$KERNELA.tar.xz" "/usr/src/linux-$KERNELA.tar.xz"
 cd /usr/src
 
-run_log rm -rf "/usr/src/linux-$KERNELA"
-run_log tar -xvf "linux-$KERNELA.tar.xz"
-run_log rm -rfv "linux-$KERNELA.tar.xz"
+run_log_kernela rm -rf "/usr/src/linux-$KERNELA"
+run_log_kernela tar -xvf "linux-$KERNELA.tar.xz"
+run_log_kernela rm -rfv "linux-$KERNELA.tar.xz"
 cd "/usr/src/linux-$KERNELA"
 
-run_log make clean
-run_log make mrproper
+run_log_kernela make clean
+run_log_kernela make mrproper
 
-run_log cp -vf /lfs-ai/lists/config .config
-run_log make olddefconfig
+run_log_kernela cp -vf /lfs-ai/lists/config .config
+run_log_kernela make olddefconfig
 
-run_log make
-run_log make headers
-run_log make headers_install
-run_log make modules
-run_log make modules_install
+run_log_kernela make
+run_log_kernela make headers
+run_log_kernela make headers_install
+run_log_kernela make modules
+run_log_kernela make modules_install
 
-run_log cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELA-lfs"
-run_log cp -vf System.map "/boot/System.map-$KERNELA"
-run_log cp -vf .config "/boot/config-$KERNELA"
+run_log_kernela cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELA-lfs"
+run_log_kernela cp -vf System.map "/boot/System.map-$KERNELA"
+run_log_kernela cp -vf .config "/boot/config-$KERNELA"
 
-run_log rm -rf "/usr/share/doc/linux-$KERNELA"
-run_log cp -vr Documentation -T "/usr/share/doc/linux-$KERNELA"
+run_log_kernela rm -rf "/usr/share/doc/linux-$KERNELA"
+run_log_kernela cp -vr Documentation -T "/usr/share/doc/linux-$KERNELA"
 
-chown --quiet -R 0:0 "/usr/src/linux-$KERNELA"
+run_log_kernela chown -R 0:0 "/usr/src/linux-$KERNELA"
 printf "${GREEN}Install successful!${RESET}\n\n"
 
 
@@ -248,34 +271,34 @@ printf "${GREEN}Install successful!${RESET}\n\n"
 
 # Install linux-$KERNELB
 printf "${MAGENTA}Installing Kernel $KERNELB...${RESET}\n"
-run_log cp -v "/sources/linux-$KERNELB.tar.gz" "/usr/src/linux-$KERNELB.tar.gz"
+run_log_kernelb cp -v "/sources/linux-$KERNELB.tar.gz" "/usr/src/linux-$KERNELB.tar.gz"
 cd /usr/src
 
-run_log rm -rf "/usr/src/linux-$KERNELB"
-run_log tar -xvf "linux-$KERNELB.tar.gz"
-run_log rm -rfv "linux-$KERNELB.tar.gz"
+run_log_kernelb rm -rf "/usr/src/linux-$KERNELB"
+run_log_kernelb tar -xvf "linux-$KERNELB.tar.gz"
+run_log_kernelb rm -rfv "linux-$KERNELB.tar.gz"
 cd "/usr/src/linux-$KERNELB"
 
-run_log make clean
-run_log make mrproper
+run_log_kernelb make clean
+run_log_kernelb make mrproper
 
-run_log cp -vf /lfs-ai/lists/config .config
-run_log make olddefconfig
+run_log_kernelb cp -vf /lfs-ai/lists/config .config
+run_log_kernelb make olddefconfig
 
-run_log make
-run_log make headers
-run_log make headers_install
-run_log make modules
-run_log make modules_install
+run_log_kernelb make
+run_log_kernelb make headers
+run_log_kernelb make headers_install
+run_log_kernelb make modules
+run_log_kernelb make modules_install
 
-run_log cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELB-lfs"
-run_log cp -vf System.map "/boot/System.map-$KERNELB"
-run_log cp -vf .config "/boot/config-$KERNELB"
+run_log_kernelb cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELB-lfs"
+run_log_kernelb cp -vf System.map "/boot/System.map-$KERNELB"
+run_log_kernelb cp -vf .config "/boot/config-$KERNELB"
 
-run_log rm -rf "/usr/share/doc/linux-$KERNELB"
-run_log cp -vr Documentation -T "/usr/share/doc/linux-$KERNELB"
+run_log_kernelb rm -rf "/usr/share/doc/linux-$KERNELB"
+run_log_kernelb cp -vr Documentation -T "/usr/share/doc/linux-$KERNELB"
 
-chown --quiet -R 0:0 "/usr/src/linux-$KERNELB"
+run_log_kernelb chown -R 0:0 "/usr/src/linux-$KERNELB"
 printf "${GREEN}Install successful!${RESET}\n\n"
 
 
@@ -707,27 +730,27 @@ popd > /dev/null
 
 dircolors -p > /etc/dircolors
 
-mkdir -p /root/Desktop
-mkdir -p /root/Documents
-mkdir -p /root/Downloads
-mkdir -p /root/Music
-mkdir -p /root/Pictures
-mkdir -p /root/Public
-mkdir -p /root/Templates
-mkdir -p /root/Videos
-mkdir -p /etc/skel/
-mkdir -p /etc/skel/Desktop
-mkdir -p /etc/skel/Documents
-mkdir -p /etc/skel/Downloads
-mkdir -p /etc/skel/Music
-mkdir -p /etc/skel/Pictures
-mkdir -p /etc/skel/Public
-mkdir -p /etc/skel/Templates
-mkdir -p /etc/skel/Videos
-cp /root/.profile /etc/skel/.profile
-cp /root/.bash_profile /etc/skel/.bash_profile
-cp /root/.bashrc /etc/skel/.bashrc
-cp /root/.bash_logout /etc/skel/.bash_logout
+run_log mkdir -pv /root/Desktop
+run_log mkdir -pv /root/Documents
+run_log mkdir -pv /root/Downloads
+run_log mkdir -pv /root/Music
+run_log mkdir -pv /root/Pictures
+run_log mkdir -pv /root/Public
+run_log mkdir -pv /root/Templates
+run_log mkdir -pv /root/Videos
+run_log mkdir -pv /etc/skel/
+run_log mkdir -pv /etc/skel/Desktop
+run_log mkdir -pv /etc/skel/Documents
+run_log mkdir -pv /etc/skel/Downloads
+run_log mkdir -pv /etc/skel/Music
+run_log mkdir -pv /etc/skel/Pictures
+run_log mkdir -pv /etc/skel/Public
+run_log mkdir -pv /etc/skel/Templates
+run_log mkdir -pv /etc/skel/Videos
+run_log cp -v /root/.profile /etc/skel/.profile
+run_log cp -v /root/.bash_profile /etc/skel/.bash_profile
+run_log cp -v /root/.bashrc /etc/skel/.bashrc
+run_log cp -v /root/.bash_logout /etc/skel/.bash_logout
 dircolors -p > /etc/skel/.dircolors
 
 

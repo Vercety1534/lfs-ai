@@ -145,7 +145,7 @@ run_lfs_phase() {
 
 
 
-# load settings.conf
+# Lload settings.conf
 load_config
 LOG_FILE="$LFS/logs/lfs"
 GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"

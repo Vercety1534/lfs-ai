@@ -187,8 +187,12 @@ rm -rf "$LFS/logs/toolchain"
 mkdir -p "$LFS/logs/toolchain"
 
 # Run install scripts
+found_script=0
 for script in "$base_dir"/cross-toolchain/*; do
     if [ -f "$script" ] && [ -x "$script" ]; then
+        found_script=1
         bash "$script"
     fi
 done
+
+[ "$found_script" -eq 1 ] || die "No executable toolchain scripts found in $base_dir/cross-toolchain"

@@ -15,6 +15,8 @@ BLUE='\033[34m'
 MAGENTA='\033[35m'
 RESET='\033[0m'
 
+FAILED=0
+
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 export LC_ALL=C
@@ -39,6 +41,7 @@ ver_check() {
 
    if ! type -p "$cmd" >/dev/null 2>&1; then
       printf "${RED}ERROR:${RESET} Cannot find %s (%s)\n" "$cmd" "$name"
+      FAILED=1
       return 1
    fi
 
@@ -46,6 +49,7 @@ ver_check() {
 
    if [ -z "$v" ]; then
       printf "${RED}ERROR:${RESET} %-10s    version could not be detected\n" "$name"
+      FAILED=1
       return 1
    fi
 
@@ -54,6 +58,7 @@ ver_check() {
       return 0
    else
       printf "${RED}ERROR:${RESET} %-10s    is TOO OLD (%s or later required)\n" "$name" "$min"
+      FAILED=1
       return 1
    fi
 }
@@ -69,6 +74,7 @@ ver_kernel() {
       return 0
    else
       printf "${RED}ERROR:${RESET} Linux Kernel (%s) is TOO OLD (%s or later required)\n" "$kver" "$min"
+      FAILED=1
       return 1
    fi
 }
@@ -77,20 +83,17 @@ check_unix98_pty() {
     if type -p zgrep >/dev/null 2>&1 && zgrep -Eq '^CONFIG_UNIX98_PTYS=y' /proc/config.gz 2>/dev/null; then
         printf "${GREEN}OK:${RESET}    UNIX 98 PTY support enabled in kernel\n"
         return 0
-    fi
-
-    if grep -Eq '^CONFIG_UNIX98_PTYS=y' "/boot/config-$(uname -r)" 2>/dev/null; then
+    elif grep -Eq '^CONFIG_UNIX98_PTYS=y' "/boot/config-$(uname -r)" 2>/dev/null; then
         printf "${GREEN}OK:${RESET}    UNIX 98 PTY support enabled in kernel\n"
         return 0
-    fi
-
-    if [ -c /dev/ptmx ]; then
+    elif [ -c /dev/ptmx ]; then
         printf "${GREEN}OK:${RESET}    /dev/ptmx exists (kernel support likely present)\n"
         return 0
+    else
+        printf "${RED}ERROR:${RESET} UNIX 98 PTY support could not be confirmed\n"
+        FAILED=1
+        return 1
     fi
-
-    printf "${RED}ERROR:${RESET} UNIX 98 PTY support could not be confirmed\n"
-    return 1
 }
 
 need_cmd() {
@@ -99,9 +102,11 @@ need_cmd() {
 
    if type -p "$cmd" >/dev/null 2>&1; then
       printf "${GREEN}OK:${RESET}    %-12s  Found\n" "$name"
+      return 0
    else
       printf "${RED}ERROR:${RESET} %-12s  Missing\n" "$name"
-      exit 1
+      FAILED=1
+      return 1
    fi
 }
 
@@ -112,63 +117,67 @@ need_nvme_version() {
    local v
 
    if ls /dev/nvme* >/dev/null 2>&1; then
-        if ! type -p nvme >/dev/null 2>&1; then
-            printf "${RED}ERROR:${RESET} nvme-cli is required for NVMe devices but is not installed.\n"
-            exit 1
-        fi
+      if ! type -p "$cmd" >/dev/null 2>&1; then
+         printf "${RED}ERROR:${RESET} nvme-cli is required for NVMe devices but is not installed.\n"
+         FAILED=1
+         return 1
+      fi
 
-        v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
+      v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
 
-        if [ -z "$v" ]; then
-            printf "${RED}ERROR:${RESET} %-10s    version could not be detected\n" "$name"
-            return 1
-        fi
+      if [ -z "$v" ]; then
+         printf "${RED}ERROR:${RESET} %-10s    version could not be detected\n" "$name"
+         FAILED=1
+         return 1
+      fi
 
-        if printf '%s\n' "$min" "$v" | sort --version-sort --check >/dev/null 2>&1; then
-            printf "${GREEN}OK:${RESET}    %-10s    %-6s    >=    %s\n" "$name" "$v" "$min"
-            return 0
-        else
-            printf "${RED}ERROR:${RESET} %-10s    is TOO OLD (%s or later required)\n" "$name" "$min"
-            return 1
-        fi
-    else
-        printf "${GREEN}OK:${RESET} No NVMe devices found on this system\n"
-    fi
+      if printf '%s\n' "$min" "$v" | sort --version-sort --check >/dev/null 2>&1; then
+         printf "${GREEN}OK:${RESET}    %-10s    %-6s    >=    %s\n" "$name" "$v" "$min"
+         return 0
+      else
+         printf "${RED}ERROR:${RESET} %-10s    is TOO OLD (%s or later required)\n" "$name" "$min"
+         FAILED=1
+         return 1
+      fi
+   else
+      printf "${GREEN}OK:${RESET} No NVMe devices found on this system\n"
+      return 0
+   fi
 }
 
 # Coreutils first because --version-sort needs Coreutils >= 7.0
 printf "\n${BLUE}Packages:${RESET}\n"
-ver_check Coreutils      sort     8.25 || bail "Coreutils too old, stop"
-ver_check Acl            setfacl  2.2.49
-ver_check Bash           bash     3.2
-ver_check Binutils       ld       2.13.1
-ver_check Bison          bison    2.7
-ver_check Diffutils      diff     2.8.1
-ver_check Dosfstools     mkfs.fat 3.0.28
-need_cmd  E2fsprogs      mkfs.ext4
-ver_check Findutils      find     4.2.31
-ver_check Gawk           gawk     4.0.1
-ver_check GCC            gcc      7.0
-ver_check "GCC (C++)"    g++      7.0
-ver_check Grep           grep     2.5.1a
-ver_check Gzip           gzip     1.3.12
-ver_check M4             m4       1.4.10
-ver_check Make           make     4.0
-need_nvme_version nvme-cli   nvme     1.9.0
-ver_check Patch          patch    2.5.4
-ver_check Perl           perl     5.8.8
-ver_check Python         python3  3.6
-ver_check Sed            sed      4.1.5
-need_cmd  Shadow         useradd
-ver_check Tar            tar      1.22
-ver_check Texinfo        texi2any 5.0
-ver_check Util-linux     lsblk    2.26
-ver_check Wget           wget     1.16.0
-ver_check Xz             xz       5.0.0
+ver_check Coreutils      sort     8.25      || bail "Coreutils too old, stop\n"
+ver_check Acl            setfacl  2.2.49    || true
+ver_check Bash           bash     3.2       || true
+ver_check Binutils       ld       2.13.1    || true
+ver_check Bison          bison    2.7       || true
+ver_check Diffutils      diff     2.8.1     || true
+ver_check Dosfstools     mkfs.fat 3.0.28    || true
+need_cmd  E2fsprogs      mkfs.ext4          || true
+ver_check Findutils      find     4.2.31    || true
+ver_check Gawk           gawk     4.0.1     || true
+ver_check GCC            gcc      7.0       || true
+ver_check "GCC (C++)"    g++      7.0       || true
+ver_check Grep           grep     2.5.1a    || true
+ver_check Gzip           gzip     1.3.12    || true
+ver_check M4             m4       1.4.10    || true
+ver_check Make           make     4.0       || true
+need_nvme_version nvme-cli   nvme     1.9.0 || true
+ver_check Patch          patch    2.5.4     || true
+ver_check Perl           perl     5.8.8     || true
+ver_check Python         python3  3.6       || true
+ver_check Sed            sed      4.1.5     || true
+need_cmd  Shadow         useradd            || true
+ver_check Tar            tar      1.22      || true
+ver_check Texinfo        texi2any 5.0       || true
+ver_check Util-linux     lsblk    2.26      || true
+ver_check Wget           wget     1.16.0    || true
+ver_check Xz             xz       5.0.0     || true
 
 printf "\n${BLUE}Kernel:${RESET}\n"
-ver_kernel 5.4
-check_unix98_pty
+ver_kernel 5.4                              || true
+check_unix98_pty                            || true
 
 
 
@@ -176,21 +185,24 @@ check_unix98_pty
 alias_check() {
    if ! type -p "$1" >/dev/null 2>&1; then
       printf "${RED}ERROR:${RESET} %-4s is missing\n" "$1"
-      exit 1
+      FAILED=1
+      return 1
    fi
 
    if "$1" --version 2>&1 | grep -qi -- "$2"; then
       printf "${GREEN}OK:${RESET}    %-4s is %s\n" "$1" "$2"
+      return 0
    else
       printf "${RED}ERROR:${RESET} %-4s is NOT %s\n" "$1" "$2"
-      exit 1
+      FAILED=1
+      return 1
    fi
 }
 
 printf "\n${BLUE}Aliases:${RESET}\n"
-alias_check awk GNU
-alias_check yacc Bison
-alias_check sh Bash
+alias_check awk  GNU   || true
+alias_check yacc Bison || true
+alias_check sh   Bash  || true
 
 
 
@@ -206,7 +218,7 @@ if g++ -x c++ "$tmp_cpp" -o "$tmp_bin"; then
 else
    printf "${RED}ERROR:${RESET} g++ does NOT work\n"
    rm -f "$tmp_cpp" "$tmp_bin"
-   exit 1
+   FAILED=1
 fi
 
 rm -f "$tmp_cpp" "$tmp_bin"
@@ -214,9 +226,19 @@ rm -f "$tmp_cpp" "$tmp_bin"
 cores="$(nproc 2>/dev/null || true)"
 if [ -z "$cores" ]; then
    printf "${RED}ERROR:${RESET}    nproc is not available or it produces empty output\n"
-   exit 1
+   FAILED=1
 else
    printf "${GREEN}OK:${RESET}    nproc reports %s logical cores are available\n" "$cores"
 fi
+
+
+
+
+if [ "$FAILED" -ne 0 ]; then
+    printf "\n${RED}ERROR:${RESET} One or more verification checks failed.\n"
+    exit 1
+fi
+
+printf "\n${GREEN}Success:${RESET} Host system passed verification.\n"
 
 unset LC_ALL PATH
