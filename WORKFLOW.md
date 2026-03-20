@@ -1,6 +1,6 @@
 # WORKFLOW
 
-This document explains the recommended workflow for using LFS-AI from a fresh clone to a full install run.
+This document explains the recommended workflow for using LFS-AI from a fresh clone to an install run.
 
 ## Clone the repository
 
@@ -16,7 +16,6 @@ Before running the installer, review the project documentation:
 ```bash
 less README.md
 less DEPS.md
-less WORKFLOW.md
 ```
 
 At minimum, make sure you understand:
@@ -44,8 +43,10 @@ Check [`settings.conf`](settings.conf) carefully before doing anything destructi
 You can review it with:
 
 ```bash
-./install -s
+sudo ./install -s
 ```
+
+This step opens [`settings.conf`](settings.conf) in an editor, reloads the file, and validates the parsed configuration values.
 
 Confirm all required values are correct, especially the target disk and any installation-specific settings.
 
@@ -85,13 +86,13 @@ Usage: ./install [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l 1|2|3|4|5|all] [-f]
 To run the automated workflow:
 
 ```bash
-./install -A
+sudo ./install -A
 ```
 
 Use the automated mode only after:
 - reviewing the documentation
 - confirming host dependencies
-- verifying [`settings.conf`](settings.conf)
+- reviewing, editing, and verifying [`settings.conf`](settings.conf)
 
 ## Use a phase-based workflow when needed
 
@@ -104,8 +105,18 @@ Typical workflow progression is:
 3. download the required source packages
 4. install the toolchain
 5. prepare the chroot environment
-6. install LFS phases
+6. install the main LFS phases
 7. install the kernel, config files, and perform final cleanup
+
+```bash
+sudo ./install -s
+sudo ./install -p
+sudo ./install -d
+sudo ./install -t
+sudo ./install -c
+sudo ./install -l all
+sudo ./install -f
+```
 
 Refer to `./install -h` and the repository scripts for the currently supported phase controls.
 
@@ -124,6 +135,8 @@ Pay close attention to:
 - final system setup
 
 Review logs and command output as each stage completes.
+
+Installer logs are written under the target LFS directory during the build process, typically under `$LFS/logs`.
 
 ## Test carefully
 

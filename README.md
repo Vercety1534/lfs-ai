@@ -32,7 +32,13 @@ Before using LFS-AI, make sure you have:
 - the required host dependencies installed
 - reviewed [`DEPS.md`](DEPS.md)
 - reviewed [`WORKFLOW.md`](WORKFLOW.md)
-- reviewed and edited [`settings.conf`](settings.conf) carefully
+- reviewed and verified [`settings.conf`](settings.conf) carefully
+
+## Root privileges
+
+Most installer actions require root privileges.
+
+In practice, you should expect to run disk preparation, mount, chroot, build, and install steps as root. Review the help output first, then run the required workflow steps with appropriate privileges.
 
 ## Quick start
 
@@ -56,11 +62,13 @@ Check host dependencies:
 ./install -v
 ```
 
-Review and edit your settings:
+Review, edit, and validate your settings:
 
 ```bash
-./install -s
+sudo ./install -s
 ```
+
+This step opens [`settings.conf`](settings.conf) in an editor, reloads it, and validates the parsed configuration values.
 
 Run the installer help menu:
 
@@ -71,10 +79,16 @@ Run the installer help menu:
 Run the automated installer:
 
 ```bash
-./install -A
+sudo ./install -A
 ```
 
 See [`WORKFLOW.md`](WORKFLOW.md) for the recommended phase-based workflow.
+
+## Logs
+
+Installer logs are written under the target LFS directory during the build process. Review logs after each major step instead of assuming success.
+
+The main log directory is `$LFS/logs`.
 
 ## Documentation
 
