@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LFS-AI - Final Script
 # Purpose: Install kernel, config files, and clean up build system
-# Safe rerun: Yes
+# Safe rerun: Yes (Will fail if logs and/or sources were previously removed)
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
