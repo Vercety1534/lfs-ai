@@ -260,7 +260,7 @@ release_drive_usage() {
     ensure_not_system_disk
 
     # Disable swap on any partition belonging to the target drive
-    while read -r part; do
+    while read -r part || [ -n "$part" ]; do
         [ -n "$part" ] || continue
         case "$part" in
             "$DRIVE"[0-9]*|"$DRIVE"p[0-9]*)
@@ -272,7 +272,7 @@ release_drive_usage() {
     done < <(swapon --noheadings --raw --output NAME 2>/dev/null || true)
 
     # Unmount all mounted partitions on the target drive
-    while read -r part mountpoint; do
+    while read -r part mountpoint || [ -n "$part" ]; do
         [ -n "$part" ] || continue
 
         case "$part" in
@@ -281,11 +281,13 @@ release_drive_usage() {
             *) continue ;;
         esac
 
-        if [ -n "$mountpoint" ]; then
-            printf "Unmounting %s from %s\n" "$part" "$mountpoint"
-            umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
-            mount_changes=1
-        fi
+        case "$mountpoint" in
+            /*)
+                printf "Unmounting %s from %s\n" "$part" "$mountpoint"
+                umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
+                mount_changes=1
+                ;;
+        esac
     done < <(lsblk -nrpo NAME,MOUNTPOINT "$DRIVE")
 
     partprobe "$DRIVE" >/dev/null 2>&1 || true
@@ -381,7 +383,7 @@ mkdir -p "$LFS/boot"
 mount "$EFI" "$LFS/boot"
 
 # Mount SWAP Partition
-swapon --discard "$SWAP"
+swapon "$SWAP"
 printf "${GREEN}Mount successful!${RESET}\n"
 
 
