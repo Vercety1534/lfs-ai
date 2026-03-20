@@ -259,19 +259,12 @@ release_drive_usage() {
 
     ensure_not_system_disk
 
-    # Disable swap on any partition belonging to the target drive
-    while read -r part || [ -n "$part" ]; do
-        [ -n "$part" ] || continue
-        case "$part" in
-            "$DRIVE"[0-9]*|"$DRIVE"p[0-9]*)
-                printf "Disabling swap on %s\n" "$part"
-                swapoff "$part" 2>/dev/null || die "Failed to disable swap on $part"
-                swap_changes=1
-                ;;
-        esac
-    done < <(swapon --noheadings --raw --output NAME 2>/dev/null || true)
+    if grep -q "^$SWAP[[:space:]]" /proc/swaps; then
+        printf "Disabling swap on %s\n" "$SWAP"
+        swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
+        swap_changes=1
+    fi
 
-    # Unmount all mounted partitions on the target drive
     while read -r part mountpoint || [ -n "$part" ]; do
         [ -n "$part" ] || continue
 
@@ -289,6 +282,8 @@ release_drive_usage() {
                 ;;
         esac
     done < <(lsblk -nrpo NAME,MOUNTPOINT "$DRIVE")
+
+    grep -q "^$SWAP[[:space:]]" /proc/swaps && die "Swap is still active on $SWAP"
 
     partprobe "$DRIVE" >/dev/null 2>&1 || true
     udevadm settle >/dev/null 2>&1 || true
