@@ -49,6 +49,7 @@ printf "${GREEN}Configuration successful!${RESET}\n"
 
 printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 run_log install -v -m644 doc/dejagnu.html "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 run_log install -v -m644 doc/dejagnu.txt  "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 printf "${GREEN}Package successful!${RESET}\n"

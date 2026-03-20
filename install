@@ -11,7 +11,7 @@ BLUE='\033[34m'
 MAGENTA='\033[35m'
 RESET='\033[0m'
 
-OPTSTRING=":Acdfhl:pstV"
+OPTSTRING=":Acdfhl:pstv"
 called_with_args="false"
 PHASE=""
 
@@ -37,9 +37,9 @@ usage() {
     printf "It can run the full install or individual stages.\n"
     printf "If a stage fails, troubleshoot it and continue from that point.\n"
     printf "\n"
-    printf "Usage: %s [-A] [-V] [-h] [-s] [-p] [-d] [-t] [-c] [-l 1|2|3|4|5|all] [-f] [--version]\n" "$0"
+    printf "Usage: %s [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l 1|2|3|4|5|all] [-f] [--version]\n" "$0"
     printf "    -A        :  ALL   :   Complete install including drive partitioning\n"
-    printf "    -V        :  DEPS  :   Verify dependencies on host system\n"
+    printf "    -v        :  DEPS  :   Verify dependencies on host system\n"
     printf "    -h        :  Help  :   Display help message\n"
     printf "\n"
     printf "    -s        : Step 1 :   Edit settings.conf (${BLUE}IMPORTANT${RESET} - Failure to do so could destroy your system)\n"
@@ -512,15 +512,28 @@ while getopts "$OPTSTRING" opt; do
         [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
             
         printf "${MAGENTA}Unmounting...${RESET}\n"
-        mountpoint -q "$LFS/dev/shm" && umount -f "$LFS/dev/shm"
-        mountpoint -q "$LFS/dev/pts" && umount -f "$LFS/dev/pts"
-        mountpoint -q "$LFS/sys"     && umount -f "$LFS/sys"
-        mountpoint -q "$LFS/proc"    && umount -f "$LFS/proc"
-        mountpoint -q "$LFS/run"     && umount -f "$LFS/run"
-        mountpoint -q "$LFS/dev"     && umount -f "$LFS/dev"
-        mountpoint -q "$LFS/boot"    && umount -f "$LFS/boot"
-        mountpoint -q "$LFS"         && umount -Rf "$LFS"
-        swapon --show=NAME 2>/dev/null | grep -qx "$SWAP" && swapoff "$SWAP"
+
+        unmount_if_mounted() {
+            local target="$1"
+
+            if mountpoint -q "$target"; then
+                umount "$target" 2>/dev/null || umount -l "$target" || die "Failed to unmount $target"
+            fi
+        }
+
+        unmount_if_mounted "$LFS/dev/shm"
+        unmount_if_mounted "$LFS/dev/pts"
+        unmount_if_mounted "$LFS/run"
+        unmount_if_mounted "$LFS/proc"
+        unmount_if_mounted "$LFS/sys"
+        unmount_if_mounted "$LFS/dev"
+        unmount_if_mounted "$LFS/boot"
+        unmount_if_mounted "$LFS"
+
+        if swapon --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
+            swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
+        fi
+
         printf "\n\n${GREEN}Success, Linux from Scratch is installed!${RESET}\n\n"
         
       else
@@ -532,7 +545,7 @@ while getopts "$OPTSTRING" opt; do
     
 
 
-    V)
+    v)
       # Check dependencies
       called_with_args="true"
       clear
@@ -714,6 +727,10 @@ while getopts "$OPTSTRING" opt; do
         printf "${MAGENTA}Verify mounts...${RESET}\n"
         ensure_lfs_layout_and_mounts
         printf "${GREEN}Verification successful!${RESET}\n\n"
+
+        GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
+        [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
+        [ -x "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
       
         case "$PHASE" in
 
@@ -724,8 +741,8 @@ while getopts "$OPTSTRING" opt; do
             run_lfs_phase 1
     
             printf "${MAGENTA}Installing glibc...${RESET}\n"
-            "$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
-            "$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
+            "$GRAFT_BIN" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
+            "$GRAFT_BIN" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
             printf "${GREEN}Install successful!${RESET}\n"
           ;;
 
@@ -736,8 +753,8 @@ while getopts "$OPTSTRING" opt; do
             run_lfs_phase 2
     
             printf "${MAGENTA}Installing ncurses...${RESET}\n"
-            "$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
-            "$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
+            "$GRAFT_BIN" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
+            "$GRAFT_BIN" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
             printf "${GREEN}Install successful!${RESET}\n"
           ;;
 
@@ -748,8 +765,8 @@ while getopts "$OPTSTRING" opt; do
             run_lfs_phase 3
     
             printf "${MAGENTA}Installing perl...${RESET}\n"
-            "$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
-            "$LFS/usr/pkg/graft-2.16/usr/bin/graft" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
+            "$GRAFT_BIN" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
+            "$GRAFT_BIN" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
             printf "${GREEN}Install successful!${RESET}\n"
           ;;
 
@@ -852,15 +869,28 @@ while getopts "$OPTSTRING" opt; do
             [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
             
             printf "${MAGENTA}Unmounting...${RESET}\n"
-            mountpoint -q "$LFS/dev/shm" && umount -f "$LFS/dev/shm"
-            mountpoint -q "$LFS/dev/pts" && umount -f "$LFS/dev/pts"
-            mountpoint -q "$LFS/sys"     && umount -f "$LFS/sys"
-            mountpoint -q "$LFS/proc"    && umount -f "$LFS/proc"
-            mountpoint -q "$LFS/run"     && umount -f "$LFS/run"
-            mountpoint -q "$LFS/dev"     && umount -f "$LFS/dev"
-            mountpoint -q "$LFS/boot"    && umount -f "$LFS/boot"
-            mountpoint -q "$LFS"         && umount -Rf "$LFS"
-            swapon --show=NAME 2>/dev/null | grep -qx "$SWAP" && swapoff "$SWAP"
+
+            unmount_if_mounted() {
+                local target="$1"
+
+                if mountpoint -q "$target"; then
+                    umount "$target" 2>/dev/null || umount -l "$target" || die "Failed to unmount $target"
+                fi
+            }
+
+            unmount_if_mounted "$LFS/dev/shm"
+            unmount_if_mounted "$LFS/dev/pts"
+            unmount_if_mounted "$LFS/run"
+            unmount_if_mounted "$LFS/proc"
+            unmount_if_mounted "$LFS/sys"
+            unmount_if_mounted "$LFS/dev"
+            unmount_if_mounted "$LFS/boot"
+            unmount_if_mounted "$LFS"
+
+            if swapon --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
+                swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
+            fi
+
             printf "\n\n${GREEN}Success, Linux from Scratch is installed!${RESET}\n\n"
       else
         exit 1

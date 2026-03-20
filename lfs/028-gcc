@@ -76,21 +76,38 @@ ulimit -s -H unlimited
 
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 
-chown --quiet -R root:root \
-    "/usr/pkg/$PACKAGE/$VERSION/usr/lib/gcc/$(gcc -dumpmachine)/$VERSION/include"{,-fixed}
+gcc_libdir="$(find "/usr/pkg/$PACKAGE/$VERSION/usr/lib/gcc" \
+    -mindepth 2 -maxdepth 2 -type d -name "$VERSION" | head -n1)"
+[ -n "$gcc_libdir" ] || die "Could not locate staged GCC library directory for version $VERSION"
+
+gcc_triplet="$(basename "$(dirname "$gcc_libdir")")"
+
+for path in "$gcc_libdir/include" "$gcc_libdir/include-fixed"; do
+    [ -e "$path" ] || continue
+    chown -R root:root "$path"
+done
+
+run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
+run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1"
+run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/lib/bfd-plugins"
+run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/gdb/auto-load/usr/lib"
+run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/info"
 
 run_log ln -svfr "/usr/pkg/$PACKAGE/$VERSION/usr/bin/cpp" "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
 run_log ln -svf gcc.1 "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1/cc.1"
 
-mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/lib/bfd-plugins"
-run_log ln -svf "../../libexec/gcc/$(gcc -dumpmachine)/$VERSION/liblto_plugin.so" \
-        "/usr/pkg/$PACKAGE/$VERSION/usr/lib/bfd-plugins/"
+run_log ln -svf "../../libexec/gcc/$gcc_triplet/$VERSION/liblto_plugin.so" \
+    "/usr/pkg/$PACKAGE/$VERSION/usr/lib/bfd-plugins/"
 
-mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/share/gdb/auto-load/usr/lib"
 for f in "/usr/pkg/$PACKAGE/$VERSION/usr/lib/"*gdb.py; do
     [ -e "$f" ] || continue
     run_log mv -v "$f" "/usr/pkg/$PACKAGE/$VERSION/usr/share/gdb/auto-load/usr/lib"
 done
+
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
+dir
+EOF
+
 printf "${GREEN}Package successful!${RESET}\n"
 
 cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"

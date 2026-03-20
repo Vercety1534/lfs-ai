@@ -1,111 +1,98 @@
-# lfs-ai
+# LFS-AI
 
-**LFS-AI: Linux From Scratch automated installer**
+LFS-AI is a **Linux From Scratch Automated Installer** designed to build and install an LFS system through a guided, script-driven workflow.
 
-## Purpose
+## Status
 
-This project exists to reduce the time and friction involved in getting a working LFS base system so you can move on to building a more useful system with BLFS.
+This project is under active development and still needs broader testing. It has only been tested on one system so far, so additional testers and hardware reports are important before it can be considered broadly reliable.
 
-It also includes a few carefully selected BLFS packages and dependencies to ease common post-install pain points, and installs Limine for EFI systems instead of GRUB.
-
-It is not intended to replace understanding the LFS process. The LFS and BLFS books should still be treated as the primary references.
+Virtual machine testing is supported and encouraged, but the project is not limited to VM-only use.
 
 ## What it does
 
-- automates the major stages of an LFS install
-- supports full installs or stage-by-stage execution
-- uses numbered package scripts for ordered builds
-- separates toolchain, chroot, LFS, and final system setup
-- keeps logs to make troubleshooting easier
-- uses `settings.conf` to control install behavior
-- installs Limine for EFI systems instead of GRUB
-- includes selected BLFS packages such as `wget`, `make-ca`, and required dependencies to reduce post-install setup work
+LFS-AI automates major parts of a Linux From Scratch build and installation process, including:
+
+- validating host requirements
+- preparing and checking configuration
+- partitioning and formatting target disks
+- mounting the target layout
+- downloading source packages
+- building the toolchain and system in phases
+- performing final system setup steps
+
+## Important warning
+
+This project can partition disks, format filesystems, and overwrite data. Review your configuration carefully before running any destructive step.
 
 ## Requirements
 
-- UEFI/EFI system
-- Review `settings.conf` before install
-- Understanding of the LFS build process
+Before using LFS-AI, make sure you have:
 
-See `DEPS.md` for host system dependencies.
+- a compatible Linux host system
+- the required host dependencies installed
+- reviewed [`DEPS.md`](DEPS.md)
+- reviewed [`WORKFLOW.md`](WORKFLOW.md)
+- reviewed and edited [`settings.conf`](settings.conf) carefully
 
-## Project Structure
+## Quick start
 
-```text
-.
-├── chroot/             # Temporary tool installs used during early chroot setup
-├── cross-toolchain/    # Cross-toolchain build scripts
-├── lfs/                # Main numbered LFS package scripts
-├── lists/              # Package lists, configs, and download references
-├── scripts/            # Wrapper/helper scripts for each stage
-├── install             # LFS-AI: Linux From Scratch automated installer
-├── package.template    # Template for package scripts
-└── settings.conf       # Main user-editable configuration
+Clone the repository:
+
+```bash
+git clone https://github.com/Vercety1534/lfs-ai.git
+cd lfs-ai
 ```
 
-## Usage
+Review the documentation:
 
-Use `./install` with one of the commands below:
-
-**Primary Commands**
-
-```text
-./install -A    :  ALL   :   Complete install including drive partitioning
-./install -V    :  DEPS  :   Verify dependencies on host system
-./install -h    :  Help  :   Display help message
+```bash
+less DEPS.md
+less WORKFLOW.md
 ```
 
-**Stage Commands**
+Check host dependencies:
 
-```text
-./install -s    : Step 1 :   Edit settings.conf (IMPORTANT - Failure to do so could destroy your system)
-./install -p    : Step 2 :   Prepare the host system and partition the drive
-./install -d    : Step 3 :   Download the required source packages
-./install -t    : Step 4 :   Install the toolchain
-./install -c    : Step 5 :   Prepare the chroot environment
-./install -l #  : Step 6 :   Install LFS [Phases - 1|2|3|4|5|all]
-./install -f    : Step 7 :   Install kernel, config files, and clean up build system
+```bash
+./install -v
 ```
 
-## Configuration
+Review and edit your settings:
 
-Before running anything, review and edit:
+```bash
+./install -s
+```
 
-`settings.conf`
+Run the installer help menu:
 
-This file controls important install behavior such as:
-- target disk
-- EFI size
-- swap size
-- mount location
-- passwords
-- other system-specific settings
+```bash
+./install -h
+```
 
-Incorrect settings can destroy data or overwrite the wrong system.
+Run the automated installer:
 
-## Logging
+```bash
+./install -A
+```
 
-Logs are written under:
+See [`WORKFLOW.md`](WORKFLOW.md) for the recommended phase-based workflow.
 
-`$LFS/logs`
+## Documentation
 
-These logs are intended to make it easier to identify which stage or package failed.
+- [`README.md`](README.md) — project overview and getting started
+- [`DEPS.md`](DEPS.md) — host dependency requirements
+- [`WORKFLOW.md`](WORKFLOW.md) — recommended phase-based workflow
+- [`settings.conf`](settings.conf) — main configuration file
 
-## Warning
+## Testing and feedback
 
-This project currently supports **UEFI/EFI systems only** and installs **Limine** as the bootloader.
+Testing on additional hardware, firmware setups, storage layouts, and virtualized environments would be very helpful. If you test LFS-AI, documenting what worked, what failed, and what hardware or VM platform you used will help make the project stronger and more reliable.
 
-This project can make destructive changes to a system, including:
-- repartitioning disks
-- formatting filesystems
-- installing bootloaders
-- modifying system configuration
-- overwriting important data
+## Current limitations
 
-**Use at your own risk.**
-
-Always review `settings.conf` and test in a virtual machine before using real hardware.
+- It has only been tested on one system so far.
+- Active development means workflow details may still change.
+- Users should verify every destructive step before running.
 
 ## License
 
-This project is licensed under the MIT License.
+This project is released under the MIT License. See [`LICENSE`](LICENSE) for the full text.

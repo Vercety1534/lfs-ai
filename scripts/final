@@ -58,7 +58,7 @@ run_log_kernelb() {
 
 # Post install clean-up
 printf "${MAGENTA}Cleaning up temp files...${RESET}\n"
-run_log rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
+rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
 
 while IFS= read -r path; do
     run_log rm -rf "$path"
@@ -85,9 +85,9 @@ MAINUUID="$(blkid -s UUID -o value "$MAIN")"
 
 cat > /etc/fstab << EOF
 # <file system>                         <mount point>  <type>       <options>       <dump>  <pass>
-UUID=$EFIUUID                              /boot       vfat        defaults,umask=0077	0 2
-UUID=$SWAPUUID   swap        swap        defaults  	0 0
-UUID=$MAINUUID   /           ext4        defaults,relatime	0 1
+UUID=$EFIUUID                              /boot       vfat        defaults,umask=0077    0 2
+UUID=$SWAPUUID   swap        swap        defaults    0 0
+UUID=$MAINUUID   /           ext4        defaults,relatime    0 1
 EOF
 printf "${GREEN}Creation successful!${RESET}\n\n"
 
@@ -326,9 +326,25 @@ if ! mountpoint -q /sys/firmware/efi/efivars; then
     mounted_efivars=1
 fi
 
+get_partition_number() {
+    local dev="$1"
+
+    case "$dev" in
+        /dev/nvme*n*p[0-9]*|/dev/mmcblk*p[0-9]*)
+            printf '%s\n' "${dev##*p}"
+            ;;
+        /dev/sd[a-z][0-9]*|/dev/vd[a-z][0-9]*|/dev/xvd[a-z][0-9]*)
+            printf '%s\n' "${dev##*[!0-9]}"
+            ;;
+        *)
+            lsblk -no PARTN "$dev" 2>/dev/null || true
+            ;;
+    esac
+}
+
 BOOT_LABEL="LFS Limine Boot Loader"
 EFI_REL_PATH='\EFI\LFS\LIMINEX64.EFI'
-EFI_PART_NUM="$(lsblk -no PARTN "$EFI")"
+EFI_PART_NUM="$(get_partition_number "$EFI")"
 
 [ -n "$EFI_PART_NUM" ] || {
     printf "%b\n" "${RED}[ERROR] Could not determine EFI partition number for $EFI${RESET}" >&2
@@ -338,8 +354,10 @@ EFI_PART_NUM="$(lsblk -no PARTN "$EFI")"
 existing_ids="$(
     efibootmgr | awk -v label="$BOOT_LABEL" '
         index($0, label) {
-            if (match($1, /^Boot[0-9A-Fa-f]{4}/)) {
-                print substr($1, 5)
+            boot=$1
+            sub(/\*.*/, "", boot)
+            if (boot ~ /^Boot[0-9A-Fa-f]{4}$/) {
+                print substr(boot, 5)
             }
         }
     '
@@ -349,7 +367,7 @@ if [ -n "$existing_ids" ]; then
     printf "%b\n" "${BLUE}[INFO] Removing existing EFI boot entry/entries for '${BOOT_LABEL}'.${RESET}"
     while IFS= read -r bootnum; do
         [ -n "$bootnum" ] || continue
-        run_log efibootmgr --delete-bootnum --bootnum "$bootnum"
+        run_log efibootmgr --delete-bootnum --bootnum "$bootnum" || true
     done <<< "$existing_ids"
 fi
 

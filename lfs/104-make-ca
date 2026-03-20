@@ -53,7 +53,7 @@ openssl x509 -in ../class3.crt -text -fingerprint -setalias "CAcert Class 3 root
         -addtrust serverAuth -addtrust emailProtection -addtrust codeSigning \
         > "/usr/pkg/$PACKAGE/$VERSION/etc/ssl/local/CAcert_Class_3_root.pem"
 
-mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/etc/profile.d"
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/etc/profile.d"
 cat > "/usr/pkg/$PACKAGE/$VERSION/etc/profile.d/pythoncerts.sh" << "EOF"
 # Begin /etc/profile.d/pythoncerts.sh
 

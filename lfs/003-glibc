@@ -120,7 +120,7 @@ run_log zic -d "$ZONEINFO" -p America/Toronto
 unset ZONEINFO tz
 
 ln -sf "/usr/pkg/$PACKAGE/$VERSION/usr/share/zoneinfo/America/Toronto" "/usr/pkg/$PACKAGE/$VERSION/etc/localtime"
-printf "${GREEN}Package successful!${RESET}\n\n\n"
+printf "${GREEN}Package successful!${RESET}\n"
 
 cat > /etc/ld.so.conf << "EOF"
 # Begin /etc/ld.so.conf
