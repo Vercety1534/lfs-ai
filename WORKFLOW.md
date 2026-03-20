@@ -23,7 +23,7 @@ At minimum, make sure you understand:
 - what the installer does
 - which steps are destructive
 - which host tools are required
-- what values must be set in `settings.conf`
+- what values must be set in [`settings.conf`](settings.conf)
 
 ## Verify host dependencies
 
@@ -35,11 +35,11 @@ Run the built-in dependency check:
 
 If dependency verification reports missing packages, install them on the host system before continuing.
 
-You should also review `DEPS.md` if needed.
+You should also review [`DEPS.md`](DEPS.md) if needed.
 
-## Review and edit `settings.conf`
+## Review and edit [`settings.conf`](settings.conf)
 
-Check `settings.conf` carefully before doing anything destructive.
+Check [`settings.conf`](settings.conf) carefully before doing anything destructive.
 
 You can review it with:
 
@@ -91,7 +91,7 @@ To run the automated workflow:
 Use the automated mode only after:
 - reviewing the documentation
 - confirming host dependencies
-- verifying `settings.conf`
+- verifying [`settings.conf`](settings.conf)
 
 ## Use a phase-based workflow when needed
 
@@ -99,7 +99,7 @@ LFS-AI is designed around staged execution. Depending on your testing or recover
 
 Typical workflow progression is:
 
-1. review and verify `settings.conf`
+1. review and verify [`settings.conf`](settings.conf)
 2. prepare the host system and partition the drive
 3. download the required source packages
 4. install the toolchain
@@ -157,4 +157,4 @@ That kind of feedback is especially valuable while the project is still being va
 
 Some steps may be safe to re-run, but `./install -p` should always be reviewed carefully before repeating it.
 
-Always confirm `settings.conf` after a reboot. Systems do not always enumerate drives in the same order.
+Always confirm [`settings.conf`](settings.conf) after a reboot. Systems do not always enumerate drives in the same order.

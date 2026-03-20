@@ -1,14 +1,14 @@
 # Host Dependencies
 
-This project requires a properly prepared Linux host system before running LFS-AI.
+LFS-AI requires a properly prepared Linux host system before installation.
 
 These dependencies are checked with:
 
 ```text
-./install -V
+./install -v
 ```
 
-If dependency verification fails, install the missing packages on the host system before continuing.
+If dependency verification fails, install the missing packages on the host system before continuing. You should also review [`README.md`](README.md) and [`WORKFLOW.md`](WORKFLOW.md) before starting.
 
 ## Required Host Tools
 
@@ -46,7 +46,7 @@ The host system should have the standard tools expected for an LFS build environ
 
 `Make`              >= 4.0
 
-`nvme-cli`          >= 1.9.0 (ONLY required for systems with nvme drives)
+`nvme-cli`          >= 1.9.0 (only required for systems with NVMe drives)
 
 `Patch`             >= 2.5.4
 
@@ -79,7 +79,7 @@ Required kernel option:
 `CONFIG_UNIX98_PTYS=y`
 
 
-## Required Command Aliases
+## Expected Command Links
 
 The host system must also provide the following command mappings, normally through symbolic or hard links:
 
@@ -109,20 +109,20 @@ For best results, the host system should:
 - use UEFI/EFI if you plan to follow the full automated install flow
 - have enough disk space for sources, build files, logs, and the target LFS system
 - have enough RAM and swap for large packages such as GCC and Python
-- be tested in a virtual machine before being used on real hardware
+- ideally be tested in a virtual machine before being used on real hardware
 
 ## Important Notes
 
 - LFS-AI is designed for UEFI/EFI systems only
-- the automated install flow uses Limine instead of GRUB
-- some BLFS packages are included during the build process to reduce post-install setup work
-- incorrect `settings.conf` values can destroy data or overwrite the wrong disk
+- The automated install flow uses Limine instead of GRUB
+- Some BLFS packages are included during the build process to reduce post-install setup work
+- Incorrect [`settings.conf`](settings.conf) values can destroy data or overwrite the wrong disk
 
 ## Before You Start
 
 Before running the installer, make sure you have:
 
-- reviewed and edited `settings.conf`
+- reviewed and edited [`settings.conf`](settings.conf)
 - verified the target disk is correct
 - confirmed you are willing to erase or modify the selected disk
 - checked that required host dependencies are installed
