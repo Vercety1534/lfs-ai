@@ -254,30 +254,48 @@ ensure_not_system_disk() {
 
 release_drive_usage() {
     local part mountpoint
+    local swap_changes=0
+    local mount_changes=0
 
     ensure_not_system_disk
 
-    while read -r part mountpoint; do
-        [ -n "$part" ] || continue
-
-        if [ -n "$mountpoint" ]; then
-            printf "Unmounting %s from %s\n" "$part" "$mountpoint"
-            umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
-        fi
-    done < <(lsblk -nrpo NAME,MOUNTPOINT "$DRIVE")
-
+    # Disable swap on any partition belonging to the target drive
     while read -r part; do
         [ -n "$part" ] || continue
         case "$part" in
-            "$DRIVE"|"$DRIVE"[0-9]|"$DRIVE"p[0-9]|"$DRIVE"[0-9][0-9]|"$DRIVE"p[0-9][0-9])
+            "$DRIVE"[0-9]*|"$DRIVE"p[0-9]*)
                 printf "Disabling swap on %s\n" "$part"
-                swapoff "$part" || die "Failed to disable swap on $part"
+                swapoff "$part" 2>/dev/null || die "Failed to disable swap on $part"
+                swap_changes=1
                 ;;
         esac
     done < <(swapon --noheadings --raw --output NAME 2>/dev/null || true)
 
+    # Unmount all mounted partitions on the target drive
+    while read -r part mountpoint; do
+        [ -n "$part" ] || continue
+
+        case "$part" in
+            "$DRIVE") continue ;;
+            "$DRIVE"[0-9]*|"$DRIVE"p[0-9]*) ;;
+            *) continue ;;
+        esac
+
+        if [ -n "$mountpoint" ]; then
+            printf "Unmounting %s from %s\n" "$part" "$mountpoint"
+            umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
+            mount_changes=1
+        fi
+    done < <(lsblk -nrpo NAME,MOUNTPOINT "$DRIVE")
+
     partprobe "$DRIVE" >/dev/null 2>&1 || true
     udevadm settle >/dev/null 2>&1 || true
+
+    if [ "$swap_changes" -eq 0 ] && [ "$mount_changes" -eq 0 ]; then
+        printf "${GREEN}No active mounts or swap found on target drive.${RESET}\n"
+    else
+        printf "${GREEN}Target drive released successfully.${RESET}\n"
+    fi
 }
 
 
@@ -320,7 +338,6 @@ prompt_confirm "Proceed with disk wipe and partitioning?"
 
 printf "${MAGENTA}Releasing any existing mounts or swap on target drive...${RESET}\n"
 release_drive_usage
-printf "${GREEN}Target drive is no longer mounted or used for swap.${RESET}\n"
 
 erase_drive
 printf "${GREEN}Wipe successful!${RESET}\n"
