@@ -207,18 +207,32 @@ printf "Checksum verification started: %s\n" "$(date '+%F %T')" >> "$LOG_FILE"
 printf "${MAGENTA}Verifying source checksums...${RESET}\n"
 cd "$LFS/sources"
 
-while IFS= read -r checksum filename; do
-    [ -n "${checksum:-}" ] || continue
-    case "$checksum" in
-        \#*) continue ;;
+checksum_failed=0
+
+while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+        ''|\#*) continue ;;
     esac
 
+    checksum="${line%% *}"
+    rest="${line#"$checksum"}"
+    filename="$(printf '%s' "$rest" | sed 's/^[[:space:]]*//; s/^\*//')"
+
     [ -f "$filename" ] || die "Missing downloaded file: $filename"
+
+    if printf '%s\n' "$line" | sha256sum -c - >> "$LOG_FILE" 2>&1; then
+        printf "${GREEN}OK:${RESET} %s\n" "$filename"
+        printf "CHECKSUM OK %s at %s\n" "$filename" "$(date '+%F %T')" >> "$LOG_FILE"
+    else
+        printf "${RED}ERROR:${RESET} Checksum failed: %s\n" "$filename" >&2
+        printf "CHECKSUM FAILED %s at %s\n" "$filename" "$(date '+%F %T')" >> "$LOG_FILE"
+        checksum_failed=1
+    fi
 done < "$base_dir/lists/sha256sums"
 
-if sha256sum -c "$base_dir/lists/sha256sums" >> "$LOG_FILE" 2>&1; then
+if [ "$checksum_failed" -eq 0 ]; then
     printf "${GREEN}Download and checksum verification successful!${RESET}\n\n"
     printf "Checksum verification successful: %s\n" "$(date '+%F %T')" >> "$LOG_FILE"
 else
-    die "Checksum verification failed. Log file: $LOG_FILE"
+    die "One or more checksum verifications failed. See $LOG_FILE"
 fi
