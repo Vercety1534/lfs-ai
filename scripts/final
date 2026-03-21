@@ -84,10 +84,10 @@ MAINUUID="$(blkid -s UUID -o value "$MAIN")"
 [ -n "$MAINUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing MAIN UUID${RESET}" >&2; exit 1; }
 
 cat > /etc/fstab << EOF
-# <file system>                         <mount point>  <type>       <options>       <dump>  <pass>
+# <file system>                         <mount point>  <type>       <options>         <dump>  <pass>
 UUID=$EFIUUID                              /boot       vfat        defaults,umask=0077    0 2
-UUID=$SWAPUUID   swap        swap        defaults    0 0
-UUID=$MAINUUID   /           ext4        defaults,relatime    0 1
+UUID=$SWAPUUID   swap        swap        defaults               0 0
+UUID=$MAINUUID   /           ext4        defaults,relatime      0 1
 EOF
 printf "${GREEN}Creation successful!${RESET}\n\n"
 

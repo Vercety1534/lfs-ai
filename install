@@ -87,6 +87,17 @@ prompt_remove() {
 
 
 
+# Clear console
+maybe_clear() {
+    [ "${NO_CLEAR:-0}" = "1" ] && return 0
+    if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ]; then
+        command -v clear >/dev/null 2>&1 && clear || true
+    fi
+}
+
+
+
+
 # Ensure root
 require_root() {
     [ "$(id -u)" -eq 0 ] || die "This installer must be run as root."
@@ -389,27 +400,27 @@ fi
 # Main program
 while getopts "$OPTSTRING" opt; do
   case "$opt" in
-  
+
     A)
       # Run all scripts
       called_with_args="true"
       require_root
-      clear
+      maybe_clear
 
       printf "${MAGENTA}Performing a partition & complete install.${RESET}\n\n"
-            
+
       printf "This could be a dangerous operation!\n"
       printf "Ensure ${BLUE}settings.conf${RESET} is updated appropriately when asked.\n\n"
-            
+
       if prompt_confirm "Are you ready to continue?"; then
-      
+
         # Check dependencies
         printf "${MAGENTA}Checking dependencies on the host system.${RESET}\n\n"
         "$base_dir/scripts/verify"
         printf "${GREEN}Verified dependencies${RESET}\n"
-        
+
         # Change settings
-        clear
+        maybe_clear
         printf "${MAGENTA}Preparing to configure settings.${RESET}\n\n"
         printf "Copy the desired drive name from below to input into ${BLUE}settings.conf${RESET}.\n"
         printf "Example ${BLUE}nvme1n1${RESET} or ${BLUE}sda${RESET}\n\n"
@@ -436,9 +447,9 @@ while getopts "$OPTSTRING" opt; do
         else
             exit 1
         fi
-      
+
         # Prepare host & drives
-        clear
+        maybe_clear
         printf "${MAGENTA}Preparing the host system and drives.${RESET}\n\n"
         printf    "This could be a dangerous operation!\n"
         printf "Ensure ${BLUE}settings.conf${RESET} was updated appropriately.\n\n"
@@ -447,18 +458,18 @@ while getopts "$OPTSTRING" opt; do
         else
             exit 1
         fi
-        
+
         # Download packages
         "$base_dir/scripts/download"
-        
+
         # Install the toolchain
         printf "${MAGENTA}Installing the toolchain.${RESET}\n"
         "$base_dir/scripts/toolchain"
-        
+
         # Setup chroot
         printf "${MAGENTA}Preparing the chroot environment.${RESET}\n"
         "$base_dir/scripts/chroot"
-        
+
         # Install LFS
         printf "${MAGENTA}Installing Linux from Scratch.${RESET}\n\n"
 
@@ -467,7 +478,7 @@ while getopts "$OPTSTRING" opt; do
         ensure_lfs_layout_and_mounts
         printf "${GREEN}Verification successful!${RESET}\n\n"
         "$base_dir/scripts/lfs"
-        
+
         # Final setup
         printf "${MAGENTA}Installing kernel and cleaning up build system.${RESET}\n"
         [ -f "$LFS/lfs-ai/scripts/final" ] || die "Missing $LFS/lfs-ai/scripts/final"
@@ -487,14 +498,14 @@ while getopts "$OPTSTRING" opt; do
             SWAP="$SWAP"                           \
             MAIN="$MAIN"                           \
             /bin/bash /lfs-ai/scripts/final
-                
+
         if prompt_remove "Do you want to remove log files?"; then
             printf "${GREEN}Removing logs...${RESET}\n"
             rm -rf "$LFS/logs"
         else
             printf "${GREEN}Skipping log removal.${RESET}\n"
         fi
-        
+
         if prompt_remove "Do you want to remove script files?"; then
             printf "${GREEN}Removing scripts...${RESET}\n"
             rm -rf "$LFS/lfs-ai"
@@ -508,9 +519,9 @@ while getopts "$OPTSTRING" opt; do
         else
             printf "${GREEN}Skipping source removal.${RESET}\n"
         fi
-            
+
         [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
-            
+
         printf "${MAGENTA}Unmounting...${RESET}\n"
 
         unmount_if_mounted() {
@@ -535,52 +546,51 @@ while getopts "$OPTSTRING" opt; do
         fi
 
         printf "\n\n${GREEN}Success, Linux from Scratch is installed!${RESET}\n\n"
-        
+
       else
         exit 1 # Exit with an error code
       fi
-            
+
     ;;
-    
-    
+
+
 
 
     v)
       # Check dependencies
       called_with_args="true"
-      clear
+      maybe_clear
       printf "${MAGENTA}Checking dependencies on the host system.${RESET}\n\n"
       "$base_dir/scripts/verify"
-            
+
     ;;
-    
 
 
-    
+
+
     h)
       # Display help
       called_with_args="true"
       usage
       exit 0
     ;;
-       
+
 
 
 
     s)
       # Change settings
       called_with_args="true"
-      require_root
-      clear
+      maybe_clear
       printf "${MAGENTA}Preparing to configure settings.${RESET}\n\n"
       printf "Copy the desired drive name from below to input into ${BLUE}settings.conf${RESET}.\n"
       printf "Example ${BLUE}nvme1n1${RESET} or ${BLUE}sda${RESET}\n\n"
-      
+
       printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
       printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
 
       lsblk
-      
+
       if prompt_confirm "Are you ready to continue?"; then
         DEFAULTEDITOR="$(command -v nano >/dev/null 2>&1 && printf 'nano' || printf 'vi')"
         "${EDITOR:-$DEFAULTEDITOR}" "$CONFIG_FILE"
@@ -596,110 +606,110 @@ while getopts "$OPTSTRING" opt; do
         printf "Swap size:       ${BLUE}%s${RESET}\n" "$SWAP_SIZE"
         printf "Mount point:     ${BLUE}%s${RESET}\n" "$LFS"
         printf "Compiler Flags:  ${BLUE}%s${RESET}\n\n" "$ADD_CFLAGS"
-      
+
         printf "${GREEN}Updated Settings${RESET}\n"
       else
         exit 1
       fi
     ;;
-        
-        
+
+
 
 
     p)
       # Prepare host & drives
       called_with_args="true"
       require_root
-      clear
+      maybe_clear
       printf "${MAGENTA}Preparing the host system and drives.${RESET}\n\n"
-            
+
       printf "This could be a dangerous operation!\n"
       printf "Ensure ${BLUE}settings.conf${RESET} was updated appropriately.\n\n"
 
       printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
       printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-            
+
       if prompt_confirm "Are you ready to continue?"; then
         printf "${GREEN}Starting Install${RESET}\n"
         "$base_dir/scripts/prepare"
       else
         exit 1
       fi
-            
+
     ;;
-        
-        
+
+
 
 
     d)
       # Download packages
       called_with_args="true"
       require_root
-      clear
+      maybe_clear
       printf "${MAGENTA}Downloading packages.${RESET}\n"
 
       printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
       printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-                        
+
       if prompt_confirm "Are you ready to continue?"; then
         "$base_dir/scripts/download"
       else
         exit 1
       fi
-            
+
     ;;
-    
-    
+
+
 
 
     t)
       # Install the toolchain
       called_with_args="true"
       require_root
-      clear
+      maybe_clear
       printf "${MAGENTA}Installing the toolchain.${RESET}\n\n"
-            
+
       printf "This could be a dangerous operation!\n"
       printf "Ensure ${BLUE}Steps 1-3${RESET} were previously complete.\n\n"
 
       printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
       printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-            
+
       if prompt_confirm "Are you ready to continue?"; then
         printf "${GREEN}Starting Install${RESET}\n"
         "$base_dir/scripts/toolchain"
       else
         exit 1
       fi
-            
+
     ;;
-    
-    
+
+
 
 
     c)
       # Setup chroot
       called_with_args="true"
       require_root
-      clear
+      maybe_clear
       printf "${MAGENTA}Preparing the chroot environment.${RESET}\n\n"
-            
+
       printf "This could be a dangerous operation!\n"
       printf "Ensure ${BLUE}Steps 1-4${RESET} were previously complete.\n\n"
 
       printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
       printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-            
+
       if prompt_confirm "Are you ready to continue?"; then
         printf "${GREEN}Starting Install${RESET}\n"
         "$base_dir/scripts/chroot"
       else
         exit 1
       fi
-            
+
     ;;
-    
-    
+
+
 
 
     l)
@@ -707,9 +717,9 @@ while getopts "$OPTSTRING" opt; do
       called_with_args="true"
       require_root
       PHASE="$OPTARG"
-      clear
+      maybe_clear
       printf "${MAGENTA}Installing Linux from Scratch.${RESET}\n\n"
-            
+
       printf "This could be a dangerous operation!\n"
       printf "Ensure ${BLUE}Steps 1-5${RESET} were previously complete.\n\n"
 
@@ -719,19 +729,19 @@ while getopts "$OPTSTRING" opt; do
 
       if prompt_confirm "Are you ready to continue?"; then
         printf "${GREEN}Starting Install${RESET}\n\n"
-        
+
         load_config
-        
+
         LOG_FILE="$LFS/logs/lfs"
-      
+
         printf "${MAGENTA}Verify mounts...${RESET}\n"
         ensure_lfs_layout_and_mounts
         printf "${GREEN}Verification successful!${RESET}\n\n"
 
         GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
         [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
-        [ -x "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
-      
+        [ -e "$LFS/usr/bin/env" ] || [ -L "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
+
         case "$PHASE" in
 
           1)
@@ -739,7 +749,7 @@ while getopts "$OPTSTRING" opt; do
             [ -f "$LFS/lfs-ai/scripts/lfs-phase1" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase1"
 
             run_lfs_phase 1
-    
+
             printf "${MAGENTA}Installing glibc...${RESET}\n"
             "$GRAFT_BIN" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
             "$GRAFT_BIN" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
@@ -751,7 +761,7 @@ while getopts "$OPTSTRING" opt; do
             [ -f "$LFS/lfs-ai/scripts/lfs-phase2" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase2"
 
             run_lfs_phase 2
-    
+
             printf "${MAGENTA}Installing ncurses...${RESET}\n"
             "$GRAFT_BIN" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
             "$GRAFT_BIN" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
@@ -761,9 +771,9 @@ while getopts "$OPTSTRING" opt; do
           3)
             printf "${MAGENTA}Running phase %s.${RESET}\n\n" "$PHASE"
             [ -f "$LFS/lfs-ai/scripts/lfs-phase3" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase3"
-          
+
             run_lfs_phase 3
-    
+
             printf "${MAGENTA}Installing perl...${RESET}\n"
             "$GRAFT_BIN" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
             "$GRAFT_BIN" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
@@ -801,33 +811,33 @@ while getopts "$OPTSTRING" opt; do
       fi
 
     ;;
-    
 
 
-    
+
+
     f)
       # Final setup
       called_with_args="true"
       require_root
-      clear
+      maybe_clear
       printf "${MAGENTA}Installing kernel and cleaning up build system.${RESET}\n\n"
-            
+
       printf "This could be a dangerous operation!\n"
       printf "Ensure ${BLUE}Steps 1-6${RESET} were previously complete.\n\n"
 
       printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
       printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-            
+
       if prompt_confirm "Are you ready to continue?"; then
         printf "${GREEN}Starting Install${RESET}\n"
-        
+
         load_config
-        
+
         printf "${MAGENTA}Verify mounts...${RESET}\n"
         ensure_lfs_layout_and_mounts
         printf "${GREEN}Verification successful!${RESET}\n\n"
         [ -f "$LFS/lfs-ai/scripts/final" ] || die "Missing $LFS/lfs-ai/scripts/final"
-        
+
             chroot "$LFS" /usr/bin/env -i              \
                 HOME=/root                             \
                 TERM="$TERM"                           \
@@ -844,14 +854,14 @@ while getopts "$OPTSTRING" opt; do
                 SWAP="$SWAP"                           \
                 MAIN="$MAIN"                           \
                 /bin/bash /lfs-ai/scripts/final
-                
+
             if prompt_remove "Do you want to remove log files?"; then
                 printf "${GREEN}Removing logs...${RESET}\n"
                 rm -rf "$LFS/logs"
             else
                 printf "${GREEN}Skipping log removal.${RESET}\n"
             fi
-        
+
             if prompt_remove "Do you want to remove script files?"; then
                 printf "${GREEN}Removing scripts...${RESET}\n"
                 rm -rf "$LFS/lfs-ai"
@@ -865,9 +875,9 @@ while getopts "$OPTSTRING" opt; do
             else
                 printf "${GREEN}Skipping source removal.${RESET}\n"
             fi
-            
+
             [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
-            
+
             printf "${MAGENTA}Unmounting...${RESET}\n"
 
             unmount_if_mounted() {
@@ -895,10 +905,10 @@ while getopts "$OPTSTRING" opt; do
       else
         exit 1
       fi
-            
+
     ;;
-    
-        
+
+
 
 
     :)

@@ -65,7 +65,7 @@ Check host dependencies:
 Review, edit, and validate your settings:
 
 ```bash
-sudo ./install -s
+./install -s
 ```
 
 This step opens [`settings.conf`](settings.conf) in an editor, reloads it, and validates the parsed configuration values.

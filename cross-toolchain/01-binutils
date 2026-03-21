@@ -52,7 +52,7 @@ cd "$LFS/sources/$PACKAGE-$VERSION"
 mkdir -p build
 cd       build
 
-printf "${MAGENTA}Configuring %s phase 1...${RESET}\n" "$PACKAGE"
+printf "\n${MAGENTA}Configuring %s phase 1...${RESET}\n" "$PACKAGE"
 run_log ../configure --prefix="$LFS/tools"  \
                      --with-sysroot="$LFS"  \
                      --target="$LFS_TGT"    \

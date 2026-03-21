@@ -150,7 +150,7 @@ load_config
 LOG_FILE="$LFS/logs/lfs"
 GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
 [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
-[ -x "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
+[ -e "$LFS/usr/bin/env" ] || [ -L "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
 
 
 # Enter chroot and run phase 1 install scripts

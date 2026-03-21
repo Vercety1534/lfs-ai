@@ -43,7 +43,7 @@ Check [`settings.conf`](settings.conf) carefully before doing anything destructi
 You can review it with:
 
 ```bash
-sudo ./install -s
+./install -s
 ```
 
 This step opens [`settings.conf`](settings.conf) in an editor, reloads the file, and validates the parsed configuration values.
@@ -109,7 +109,7 @@ Typical workflow progression is:
 7. install the kernel, config files, and perform final cleanup
 
 ```bash
-sudo ./install -s
+./install -s
 sudo ./install -p
 sudo ./install -d
 sudo ./install -t
