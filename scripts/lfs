@@ -75,6 +75,15 @@ validate_nonempty_path() {
     esac
 }
 
+validate_password() {
+    local name="$1"
+    local value="$2"
+
+    validate_placeholder "$name" "$value"
+    [ -n "$value" ] || die "$name is empty."
+    [ "${#value}" -ge 8 ] || die "$name must be at least 8 characters long."
+}
+
 derive_partitions() {
     case "$DRIVE" in
         /dev/nvme*|/dev/mmcblk*)
@@ -93,10 +102,38 @@ derive_partitions() {
     esac
 }
 
+validate_make_jobs() {
+    local value="$1"
+    local jobs
+
+    [ -n "$value" ] || die "MAKE_JOBS is empty."
+
+    case "$value" in
+        -j[0-9]*)
+            jobs="${value#-j}"
+            ;;
+        *)
+            die "MAKE_JOBS must look like -j4 or -j16. Got: $value"
+            ;;
+    esac
+
+    case "$jobs" in
+        *[!0-9]*|"")
+            die "MAKE_JOBS must contain a positive integer after -j. Got: $value"
+            ;;
+    esac
+
+    [ "$jobs" -ge 1 ] || die "MAKE_JOBS must be at least -j1. Got: $value"
+}
+
 validate_config() {
     validate_drive_name "$DRIVE"
 
     validate_nonempty_path "LFS" "$LFS"
+    
+    validate_password "ROOT_PASS" "$ROOT_PASS"
+    
+    validate_make_jobs "$MAKE_JOBS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
     [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
@@ -132,8 +169,8 @@ run_lfs_phase() {
         TERM="$TERM" \
         PS1='(lfs chroot) \u:\w\$ ' \
         PATH=/usr/bin:/usr/sbin:/bin:/sbin \
-        MAKEFLAGS="-j$(nproc)" \
-        TESTSUITEFLAGS="-j$(nproc)" \
+        MAKEFLAGS="$MAKE_JOBS" \
+        TESTSUITEFLAGS="$MAKE_JOBS" \
         ADD_CFLAGS="${ADD_CFLAGS:-}" \
         CFLAGS="${CFLAGS} ${ADD_CFLAGS:-}" \
         CXXFLAGS="${CXXFLAGS} ${ADD_CFLAGS:-}" \

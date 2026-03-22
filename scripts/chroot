@@ -94,10 +94,36 @@ derive_partitions() {
     esac
 }
 
+validate_make_jobs() {
+    local value="$1"
+    local jobs
+
+    [ -n "$value" ] || die "MAKE_JOBS is empty."
+
+    case "$value" in
+        -j[0-9]*)
+            jobs="${value#-j}"
+            ;;
+        *)
+            die "MAKE_JOBS must look like -j4 or -j16. Got: $value"
+            ;;
+    esac
+
+    case "$jobs" in
+        *[!0-9]*|"")
+            die "MAKE_JOBS must contain a positive integer after -j. Got: $value"
+            ;;
+    esac
+
+    [ "$jobs" -ge 1 ] || die "MAKE_JOBS must be at least -j1. Got: $value"
+}
+
 validate_config() {
     validate_drive_name "$DRIVE"
 
     validate_nonempty_path "LFS" "$LFS"
+    
+    validate_make_jobs "$MAKE_JOBS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
     [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
@@ -275,6 +301,6 @@ chroot "$LFS" /usr/bin/env -i              \
     TERM="$TERM"                           \
     PS1='(lfs chroot) \u:\w\$ '            \
     PATH=/usr/bin:/usr/sbin:/bin:/sbin     \
-    MAKEFLAGS="-j$(nproc)"                 \
-    TESTSUITEFLAGS="-j$(nproc)"            \
+    MAKEFLAGS="$MAKE_JOBS"                 \
+    TESTSUITEFLAGS="$MAKE_JOBS"            \
     /bin/bash ./lfs-ai/scripts/toolchain-chroot

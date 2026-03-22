@@ -182,6 +182,30 @@ derive_partitions() {
     esac
 }
 
+validate_make_jobs() {
+    local value="$1"
+    local jobs
+
+    [ -n "$value" ] || die "MAKE_JOBS is empty."
+
+    case "$value" in
+        -j[0-9]*)
+            jobs="${value#-j}"
+            ;;
+        *)
+            die "MAKE_JOBS must look like -j4 or -j16. Got: $value"
+            ;;
+    esac
+
+    case "$jobs" in
+        *[!0-9]*|"")
+            die "MAKE_JOBS must contain a positive integer after -j. Got: $value"
+            ;;
+    esac
+
+    [ "$jobs" -ge 1 ] || die "MAKE_JOBS must be at least -j1. Got: $value"
+}
+
 validate_config() {
     validate_drive_name "$DRIVE"
 
@@ -194,6 +218,8 @@ validate_config() {
     validate_nonempty_path "LFS" "$LFS"
 
     validate_password "LFS_PASS" "$LFS_PASS"
+    
+    validate_make_jobs "$MAKE_JOBS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
     [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
@@ -328,6 +354,7 @@ printf "ROOT partition:  ${BLUE}%s${RESET}\n" "$MAIN"
 printf "EFI size:        ${BLUE}%s${RESET}\n" "$EFI_SIZE"
 printf "Swap size:       ${BLUE}%s${RESET}\n" "$SWAP_SIZE"
 printf "Mount point:     ${BLUE}%s${RESET}\n" "$LFS"
+printf "MAKEFLAGS:       ${BLUE}%s${RESET}\n" "$MAKE_JOBS"
 
 printf "${MAGENTA}Preparing drive...${RESET}\n\n"
 printf "${RED}WARNING:${RESET} This will erase all data on %s\n" "$DRIVE"
@@ -469,7 +496,7 @@ if [ ! -L /bin ]; then PATH=/bin:\$PATH; fi
 PATH=\$LFS/tools/bin:\$PATH
 CONFIG_SITE=\$LFS/usr/share/config.site
 export LFS LC_ALL LFS_TGT PATH CONFIG_SITE
-export MAKEFLAGS=-j\$(nproc)
+export MAKEFLAGS=$MAKE_JOBS
 EOF
 
 if [ -e /etc/bash.bashrc ] && [ ! -e /etc/bash.bashrc.NOUSE ]; then
