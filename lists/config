@@ -215,7 +215,6 @@ CONFIG_CPUSETS=y
 CONFIG_CGROUP_DEVICE=y
 CONFIG_CGROUP_CPUACCT=y
 CONFIG_CGROUP_PERF=y
-# CONFIG_CGROUP_BPF is not set
 CONFIG_CGROUP_MISC=y
 CONFIG_SOCK_CGROUP_DATA=y
 CONFIG_NAMESPACES=y
@@ -1740,7 +1739,6 @@ CONFIG_WEXT_PROC=y
 CONFIG_CFG80211=y
 # CONFIG_NL80211_TESTMODE is not set
 # CONFIG_CFG80211_DEVELOPER_WARNINGS is not set
-CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y
 CONFIG_CFG80211_USE_KERNEL_REGDB_KEYS=y
 CONFIG_CFG80211_DEFAULT_PS=y
 # CONFIG_CFG80211_DEBUGFS is not set
@@ -6951,6 +6949,11 @@ CONFIG_IO_URING_ZCRX=y
 CONFIG_IO_URING_BPF=y
 
 # --- Drop remaining debug overhead ---
+
+
+# --- Prefer fully disabling debugfs instead of half-disabled ---
+
+# --- Drop remaining debug overhead ---
 # CONFIG_SLUB_DEBUG is not set
 # CONFIG_DEBUG_MEMORY_INIT is not set
 # CONFIG_SCHED_INFO is not set
@@ -6959,3 +6962,9 @@ CONFIG_IO_URING_BPF=y
 # --- Prefer fully disabling debugfs instead of half-disabled ---
 # CONFIG_DEBUG_FS is not set
 # CONFIG_DEBUG_FS_ALLOW_NONE is not set
+
+# systemd/journald BPF cgroup firewall support
+CONFIG_CGROUP_BPF=y
+
+# Don't require signed regulatory database
+# CONFIG_CFG80211_REQUIRE_SIGNED_REGDB is not set

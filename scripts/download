@@ -157,6 +157,9 @@ printf "\n${MAGENTA}Starting downloads...${RESET}\n\n"
 : > "$LOG_FILE"
 printf "Download started: %s\n" "$(date '+%F %T')" >> "$LOG_FILE"
 
+# wget progress output is not fully consistent across distro versions/builds.
+# For example, Fedora may be more verbose than Ubuntu or Arch.
+
 while IFS= read -r url || [ -n "$url" ]; do
     case "$url" in
         ''|\#*) continue ;;
