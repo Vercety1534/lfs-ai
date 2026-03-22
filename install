@@ -407,6 +407,27 @@ run_lfs_phase() {
 
 
 
+# Clean up ACLs
+cleanup_lfs_repo_access() {
+    local repo_dir="$1"
+    local dir
+
+    [ -d "$repo_dir" ] || return 0
+
+    setfacl -R -x u:lfs "$repo_dir" 2>/dev/null || true
+    setfacl -R -k "$repo_dir" 2>/dev/null || true
+
+    dir="$(dirname "$repo_dir")"
+    while [ "$dir" != "/" ]; do
+        setfacl -x u:lfs "$dir" 2>/dev/null || true
+        dir="$(dirname "$dir")"
+    done
+    setfacl -x u:lfs / 2>/dev/null || true
+}
+
+
+
+
 # Show installer version
 [ -f "$base_dir/VERSION" ] || die "Missing VERSION file at $base_dir/VERSION"
 VERSION="$(<"$base_dir/VERSION")"
@@ -545,6 +566,22 @@ while getopts "$OPTSTRING" opt; do
             rm -rf "$LFS/sources"
         else
             printf "${GREEN}Skipping source removal.${RESET}\n"
+        fi
+
+        if id lfs >/dev/null 2>&1; then
+            if prompt_remove "Do you want to remove the lfs user and home directory?"; then
+                userdel -r lfs || die "Failed to remove lfs user"
+                printf "${GREEN}Removed lfs user.${RESET}\n"
+            else
+                printf "${GREEN}Skipping lfs user removal.${RESET}\n"
+            fi
+        fi
+
+        if prompt_remove "Do you want to remove ACL entries created for the lfs user?"; then
+            cleanup_lfs_repo_access "$base_dir"
+            printf "${GREEN}Removed ACL entries for lfs.${RESET}\n"
+        else
+            printf "${GREEN}Skipping ACL cleanup.${RESET}\n"
         fi
 
         [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
@@ -902,6 +939,22 @@ while getopts "$OPTSTRING" opt; do
                 rm -rf "$LFS/sources"
             else
                 printf "${GREEN}Skipping source removal.${RESET}\n"
+            fi
+
+            if id lfs >/dev/null 2>&1; then
+                if prompt_remove "Do you want to remove the lfs build user and home directory?"; then
+                    userdel -r lfs || die "Failed to remove lfs user"
+                    printf "${GREEN}Removed lfs user.${RESET}\n"
+                else
+                    printf "${GREEN}Skipping lfs user removal.${RESET}\n"
+                fi
+            fi
+
+            if prompt_remove "Do you want to remove ACL entries created for the lfs user?"; then
+                cleanup_lfs_repo_access "$base_dir"
+                printf "${GREEN}Removed ACL entries for lfs.${RESET}\n"
+            else
+                printf "${GREEN}Skipping ACL cleanup.${RESET}\n"
             fi
 
             [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc

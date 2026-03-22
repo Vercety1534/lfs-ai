@@ -218,7 +218,7 @@ validate_config() {
     validate_nonempty_path "LFS" "$LFS"
 
     validate_password "LFS_PASS" "$LFS_PASS"
-    
+
     validate_make_jobs "$MAKE_JOBS"
 
     [ "$LFS" != "/" ] || die "LFS cannot be /"
@@ -468,17 +468,31 @@ printf "${GREEN}Build user creation successful!${RESET}\n"
 
 
 printf "\n${MAGENTA}Setting up the environment...${RESET}\n"
-# Fix permissions
+
 chown --quiet -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"
 
 case $(uname -m) in
   x86_64) chown --quiet lfs "$LFS/lib64" ;;
 esac
 
-parent_dir="$(cd -- "$base_dir/.." && pwd)"
-setfacl -m u:lfs:rx "$parent_dir"
-setfacl -R -m u:lfs:rX "$base_dir"
-setfacl -R -d -m u:lfs:rX "$base_dir"
+grant_lfs_repo_access() {
+    local repo_dir="$1"
+    local dir
+
+    [ -d "$repo_dir" ] || die "Repository directory not found: $repo_dir"
+
+    dir="$(dirname "$repo_dir")"
+    while [ "$dir" != "/" ]; do
+        setfacl -m u:lfs:--x "$dir"
+        dir="$(dirname "$dir")"
+    done
+    setfacl -m u:lfs:--x /
+
+    setfacl -R -m u:lfs:rX "$repo_dir"
+    setfacl -R -d -m u:lfs:rX "$repo_dir"
+}
+
+grant_lfs_repo_access "$base_dir"
 
 # Setup the environment
 cat > /home/lfs/.bash_profile << "EOF"

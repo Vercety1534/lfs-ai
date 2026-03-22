@@ -101,6 +101,8 @@ The main log directory is `$LFS/logs`.
 
 Testing on additional hardware, firmware setups, storage layouts, and virtualized environments would be very helpful. If you test LFS-AI, documenting what worked, what failed, and what hardware or VM platform you used will help make the project stronger and more reliable.
 
+For the most predictable results, use a stable host distribution. During testing, random compiler internal errors and segmentation faults occurred on a rolling-release host, while the same build completed successfully on a clean Debian system on the same hardware.
+
 ## Current limitations
 
 - It has only been tested on one system so far.
