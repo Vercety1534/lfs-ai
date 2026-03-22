@@ -68,6 +68,7 @@ run_log meson setup ..                \
               -D nobody-group=nogroup \
               -D sysupdate=disabled   \
               -D ukify=disabled       \
+              -D bpf-framework=disabled \
               -D docdir="/usr/share/doc/$PACKAGE-$VERSION"
 printf "${GREEN}Configuration successful!${RESET}\n"
 
@@ -92,6 +93,11 @@ run_log graft -iV "$PACKAGE/$VERSION"
 
 run_log systemd-machine-id-setup
 run_log systemctl preset-all
+
+# systemctl preset-all creates an invalid autovt@tty1.service alias symlink,
+# which causes a harmless but noisy getty.target warning at boot.
+run_log rm -f /etc/systemd/system/getty.target.wants/autovt@tty1.service
+run_log systemctl daemon-reload
 printf "${GREEN}Install successful!${RESET}\n\n\n"
 
 cd /sources
