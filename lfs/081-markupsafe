@@ -3,16 +3,24 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=markupsafe
 VERSION=3.0.3
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
@@ -21,16 +29,13 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$PACKAGE-$VERSION.tar.gz" >&2
-    exit 1
-}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
 
 cd /sources
 
@@ -38,18 +43,18 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps "$PWD"
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log pip3 install --force-reinstall --no-index --find-links dist Markupsafe --root "/usr/pkg/$PACKAGE/$VERSION" --prefix /usr
-printf "${GREEN}Package successful!${RESET}\n"
+printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"
 run_log graft -iV "$PACKAGE/$VERSION"
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
 rm -rf "$PACKAGE-$VERSION"

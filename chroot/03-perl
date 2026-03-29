@@ -3,17 +3,25 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=perl
 MAJOR_VERSION=5.42
 MINOR_VERSION=1
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/chroot/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.log"
@@ -22,16 +30,13 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz" >&2
-    exit 1
-}
+
+[ -f "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz"
 
 cd /sources
 
@@ -39,7 +44,7 @@ rm -rf "$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION"
 tar -xf "$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION.tar.gz"
 cd "/sources/$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION"
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log sh Configure -des                                                     \
                      -D prefix=/usr                                           \
                      -D vendorprefix=/usr                                     \
@@ -50,15 +55,15 @@ run_log sh Configure -des                                                     \
                      -D sitearch=/usr/lib/perl5/"$MAJOR_VERSION"/site_perl    \
                      -D vendorlib=/usr/lib/perl5/"$MAJOR_VERSION"/vendor_perl \
                      -D vendorarch=/usr/lib/perl5/"$MAJOR_VERSION"/vendor_perl
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make install
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
 rm -rf "$PACKAGE-$MAJOR_VERSION.$MINOR_VERSION"

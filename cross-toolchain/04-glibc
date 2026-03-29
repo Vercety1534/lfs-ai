@@ -3,22 +3,27 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=glibc
 VERSION=2.43
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-base_dir="$(cd -- "$script_dir/.." && pwd)"
-CONFIG_FILE="$base_dir/settings.conf"
 
-source "$CONFIG_FILE"
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
+[ -n "${LFS:-}" ] || die 'LFS is not set.'
+[ -n "${LFS_TGT:-}" ] || die 'LFS_TGT is not set.'
+
 
 # Log command
 LOG_FILE="$LFS/logs/toolchain/$PACKAGE-$VERSION.log"
@@ -27,27 +32,14 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -n "$LFS_TGT" ] || {
-    printf "${RED}[ERROR] LFS_TGT is not set.${RESET}\n" >&2
-    exit 1
-}
 
-[ -f "$LFS/sources/$PACKAGE-$VERSION.tar.xz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "$LFS/sources/$PACKAGE-$VERSION.tar.xz" >&2
-    exit 1
-}
-
-[ -f "$LFS/sources/glibc-fhs-1.patch" ] || {
-    printf "${RED}[ERROR] Missing patch: %s${RESET}\n" \
-        "$LFS/sources/glibc-fhs-1.patch" >&2
-    exit 1
-}
+[ -f "$LFS/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: $LFS/sources/$PACKAGE-$VERSION.tar.xz"
+[ -f "$LFS/sources/glibc-fhs-1.patch" ] || die "Missing patch: $LFS/sources/glibc-fhs-1.patch"
 
 cd "$LFS/sources"
 
@@ -55,15 +47,15 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "$LFS/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Patching %s...${RESET}\n" "$PACKAGE"
+printf '%sPatching %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 case "$(uname -m)" in
     i?86)
-        ln -sf ld-linux.so.2 "$LFS/lib/ld-lsb.so.3"
+        run_log ln -svf ld-linux.so.2 "$LFS/lib/ld-lsb.so.3"
         ;;
     x86_64)
-        mkdir -p "$LFS/lib64"
-        ln -sf ../lib/ld-linux-x86-64.so.2 "$LFS/lib64/ld-linux-x86-64.so.2"
-        ln -sf ../lib/ld-linux-x86-64.so.2 "$LFS/lib64/ld-lsb-x86-64.so.3"
+        run_log mkdir -pv "$LFS/lib64"
+        run_log ln -svf ../lib/ld-linux-x86-64.so.2 "$LFS/lib64/ld-linux-x86-64.so.2"
+        run_log ln -svf ../lib/ld-linux-x86-64.so.2 "$LFS/lib64/ld-lsb-x86-64.so.3"
         ;;
 esac
 
@@ -72,10 +64,10 @@ run_log patch -Np1 -i ../glibc-fhs-1.patch
 mkdir -p build
 cd       build
 
-printf "rootsbindir=/usr/sbin\n" > configparms
-printf "${GREEN}Patch successful!${RESET}\n"
+printf 'rootsbindir=/usr/sbin\n' > configparms
+printf '%sPatch successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log ../configure                         \
         --prefix=/usr                        \
         --host="$LFS_TGT"                    \
@@ -83,17 +75,17 @@ run_log ../configure                         \
         --disable-nscd                       \
         libc_cv_slibdir=/usr/lib             \
         --enable-kernel=6.6
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="$LFS" install
 
 sed '/RTLDLIST=/s@/usr@@g' -i "$LFS/usr/bin/ldd"
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd "$LFS/sources"
 rm -rf "$PACKAGE-$VERSION"

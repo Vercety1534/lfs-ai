@@ -6,29 +6,35 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
+
+RED=$'\033[31m'
+RESET=$'\033[0m'
 
 cd /lfs-ai
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
 
 rm -rf /logs/lfs/phase1
 mkdir -p /logs/lfs/phase1
 
-[ -d /lfs-ai/lfs ] || {
-    printf "\033[31m[ERROR] Missing /lfs-ai/lfs\033[0m\n" >&2
-    exit 1
-}
+[ -d /lfs-ai/lfs ] || die 'Missing /lfs-ai/lfs'
 
 # Phase 1 install
 shopt -s nullglob
 
 found_script=0
 for script in /lfs-ai/lfs/{001..003}-*; do
-    [ -f "$script" ] && [ -x "$script" ] || continue
-    found_script=1
-    bash "$script"
+    if [[ -f "$script" && -x "$script" ]]; then
+        found_script=1
+        bash "$script"
+    fi
 done
 
-[ "$found_script" -eq 1 ] || {
-    printf "\033[31m[ERROR] No executable phase 1 scripts found in /lfs-ai/lfs\033[0m\n" >&2
-    exit 1
-}
+if (( found_script != 1 )); then
+    die 'No executable phase 1 scripts found in /lfs-ai/lfs'
+fi

@@ -5,59 +5,285 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
-KERNELA=6.19.9
-KERNELB=7.0-rc4
-LFS_VERSION=r13.0-5-systemd
+KERNELA=6.19.10
+KERNELB=7.0-rc5
+LFS_VERSION=r13.0-12-systemd
 
 
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
 
 
 # Log command
 run_log() {
     local LOG_FILE="/logs/final.log"
-    
+
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
 run_log_kernela() {
     local LOG_FILE="/logs/linux-$KERNELA.log"
-    
+
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
 run_log_kernelb() {
     local LOG_FILE="/logs/linux-$KERNELB.log"
-    
+
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
 
+# Create host name
+prompt_hostname() {
+    local input
+
+    printf '%sSystem hostname setup%s\n' "$MAGENTA" "$RESET"
+    printf 'Enter the name this computer should use on the network.\n'
+    printf 'Example: %slfs%s, %smy-pc%s, or %sworkstation1%s\n\n' \
+        "$BLUE" "$RESET" "$BLUE" "$RESET" "$BLUE" "$RESET"
+
+    while :; do
+        printf 'Hostname: '
+        IFS= read -r input
+
+        case "$input" in
+            '')
+                printf '%sERROR:%s Hostname cannot be empty.\n' "$RED" "$RESET" >&2
+                ;;
+            *[!A-Za-z0-9.-]*)
+                printf '%sERROR:%s Hostname may only contain letters, numbers, dots, and hyphens.\n' "$RED" "$RESET" >&2
+                ;;
+            -*|*.|*..*)
+                printf '%sERROR:%s Invalid hostname format.\n' "$RED" "$RESET" >&2
+                ;;
+            *)
+                HOSTNAME="$input"
+                export HOSTNAME
+                return 0
+                ;;
+        esac
+    done
+}
+
+
+# Set console
+keymap_exists() {
+    local keymap_name="$1"
+    local keymap_dir='/usr/share/keymaps'
+    local match
+
+    match="$(
+        find "$keymap_dir" \
+            \( -name "${keymap_name}.map" -o -name "${keymap_name}.map.gz" \) \
+            -print -quit 2>/dev/null
+    )"
+
+    [ -n "$match" ]
+}
+
+normalize_console_keymap() {
+    case "$1" in
+        ru) printf '%s\n' 'ru1' ;;
+        *)  printf '%s\n' "$1" ;;
+    esac
+}
+
+unsupported_console_keymap() {
+    case "$1" in
+        apple-*|neo|neoqwertz|bone|koy|adnw|3l|fr-bepo|fr-afnor|ruwin_*UTF-8|ttwin_*UTF-8|bg_*utf8|mk-utf|lt|lv|lv-tilde|ro|ro_std)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+prompt_keymap() {
+    local input
+    local default_keymap='us'
+
+    printf '%sConsole keyboard setup%s\n' "$MAGENTA" "$RESET"
+    printf 'Enter the keyboard layout for the Linux console.\n'
+    printf 'Examples: %sus%s, %suk%s, %sde%s, %sfr%s\n' \
+        "$BLUE" "$RESET" \
+        "$BLUE" "$RESET" \
+        "$BLUE" "$RESET" \
+        "$BLUE" "$RESET"
+    printf 'See %s/usr/share/keymaps%s for available keymaps.\n' "$BLUE" "$RESET"
+    printf 'Leave blank to use the default: %s%s%s\n\n' \
+        "$BLUE" "$default_keymap" "$RESET"
+
+    while :; do
+        printf 'Keymap [%s]: ' "$default_keymap"
+        IFS= read -r input
+        [ -n "$input" ] || input="$default_keymap"
+
+        case "$input" in
+            *[!A-Za-z0-9_+-]*)
+                printf '%sERROR:%s Invalid keymap format.\n' "$RED" "$RESET" >&2
+                ;;
+            *)
+                input="$(normalize_console_keymap "$input")"
+
+                if unsupported_console_keymap "$input"; then
+                    printf '%sERROR:%s This keymap is known to be problematic on the Linux console: %s\n' \
+                        "$RED" "$RESET" "$input" >&2
+                    printf 'Choose a different keymap for first boot.\n' >&2
+                    continue
+                fi
+
+                if keymap_exists "$input"; then
+                    SYSTEM_KEYMAP="$input"
+                    export SYSTEM_KEYMAP
+                    return 0
+                fi
+
+                printf '%sERROR:%s Unsupported keymap: %s\n' "$RED" "$RESET" "$input" >&2
+                printf 'Enter a keymap that exists under /usr/share/keymaps.\n' >&2
+                ;;
+        esac
+    done
+}
+
+font_exists() {
+    local font_name="$1"
+    local font_dir='/usr/share/consolefonts'
+    local match
+
+    match="$(
+        find "$font_dir" \
+            \( -name "${font_name}.psf" \
+            -o -name "${font_name}.psf.gz" \
+            -o -name "${font_name}.psfu" \
+            -o -name "${font_name}.psfu.gz" \) \
+            -print -quit 2>/dev/null
+    )"
+
+    [ -n "$match" ]
+}
+
+select_console_font() {
+    local locale_name="$1"
+
+    case "$locale_name" in
+        ja_*|ja_*.*|ko_*|ko_*.*|zh_*|zh_*.*)
+            SYSTEM_FONT='lat0-16'
+            ;;
+        ru_*|ru_*.*|uk_*|uk_*.*|be_*|be_*.*|bg_*|bg_*.*|mk_*|mk_*.*|sr_*|sr_*.*)
+            SYSTEM_FONT='cyr-sun16'
+            ;;
+        *)
+            SYSTEM_FONT='Lat2-Terminus16'
+            ;;
+    esac
+
+    if ! font_exists "$SYSTEM_FONT"; then
+        SYSTEM_FONT='Lat2-Terminus16'
+    fi
+
+    export SYSTEM_FONT
+}
+
+
+# Set locale
+locale_exists() {
+    local locale_name="$1"
+    grep -Eq "^${locale_name//./\\.}[[:space:]]" /usr/share/i18n/SUPPORTED
+}
+
+prompt_locale() {
+    local input
+    local default_locale='en_US.UTF-8'
+
+    printf '\n%sSystem locale setup%s\n' "$MAGENTA" "$RESET"
+    printf 'Enter a supported locale for this system.\n\n'
+
+    printf 'Examples: %sen_US.UTF-8%s, %ses_MX.UTF-8%s, %sfr_FR.UTF-8%s\n' "$BLUE" "$RESET" "$BLUE" "$RESET" "$BLUE" "$RESET"
+    printf 'Other valid examples include %sru_RU.KOI8-R%s or %sja_JP.EUC-JP%s.\n' "$BLUE" "$RESET" "$BLUE" "$RESET"
+    printf 'See %s/usr/share/i18n/SUPPORTED%s for all possible values\n\n' "$BLUE" "$RESET"
+    printf 'Leave blank to use the default: %s%s%s\n\n' "$BLUE" "$default_locale" "$RESET"
+
+    while :; do
+        printf 'Locale [%s]: ' "$default_locale"
+        IFS= read -r input
+        [ -n "$input" ] || input="$default_locale"
+
+        if locale_exists "$input"; then
+            SYSTEM_LOCALE="$input"
+            export SYSTEM_LOCALE
+            return 0
+        fi
+
+        printf '%sERROR:%s Unsupported locale: %s\n' "$RED" "$RESET" "$input" >&2
+        printf 'Enter a locale exactly as listed in the supported locale file.\n' >&2
+    done
+}
+
+generate_locale() {
+    local locale_name="$1"
+    local locale_line output_name input_name charmap
+
+    locale_line="$(grep -E "^${locale_name//./\\.}[[:space:]]" /usr/share/i18n/SUPPORTED | head -n 1)"
+    [ -n "$locale_line" ] || die "Could not find locale definition for $locale_name"
+
+    output_name="${locale_line%%[[:space:]]*}"
+    charmap="${locale_line##*[[:space:]]}"
+
+    case "$output_name" in
+        *@*)
+            if [[ "$output_name" == *.*@* ]]; then
+                input_name="${output_name%%.*}@${output_name#*@}"
+            else
+                input_name="$output_name"
+            fi
+            ;;
+        *.*)
+            input_name="${output_name%%.*}"
+            ;;
+        *)
+            input_name="$output_name"
+            ;;
+    esac
+
+    run_log localedef --force -i C -f UTF-8 C.UTF-8
+    run_log localedef --force -i en_US -f ISO-8859-1 en_US
+    run_log localedef --force -i en_US -f UTF-8 en_US.UTF-8
+    run_log localedef --force -i "$input_name" -f "$charmap" "$output_name"
+}
+
+
+
 
 # Post install clean-up
-printf "${MAGENTA}Cleaning up temp files...${RESET}\n"
+printf '\n%sCleaning up temp files...%s\n' "$MAGENTA" "$RESET"
 rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
 
 while IFS= read -r path; do
@@ -68,20 +294,18 @@ if id tester &>/dev/null; then
     run_log userdel -fr tester
 fi
 
-printf "${GREEN}Clean-up successful!${RESET}\n\n"
-
-
+printf '%sClean-up successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Gen fstab
-printf "${MAGENTA}Creating fstab...${RESET}\n"
+printf '%sCreating fstab...%s\n' "$MAGENTA" "$RESET"
 EFIUUID="$(blkid -s UUID -o value "$EFI")"
 SWAPUUID="$(blkid -s UUID -o value "$SWAP")"
 MAINUUID="$(blkid -s UUID -o value "$MAIN")"
 
-[ -n "$EFIUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing EFI UUID${RESET}" >&2; exit 1; }
-[ -n "$SWAPUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing SWAP UUID${RESET}" >&2; exit 1; }
-[ -n "$MAINUUID" ] || { printf "%b\n" "${RED}[ERROR] Missing MAIN UUID${RESET}" >&2; exit 1; }
+[ -n "$EFIUUID" ] || die 'Missing EFI UUID'
+[ -n "$SWAPUUID" ] || die 'Missing SWAP UUID'
+[ -n "$MAINUUID" ] || die 'Missing MAIN UUID'
 
 cat > /etc/fstab << EOF
 # <file system>                         <mount point>  <type>       <options>         <dump>  <pass>
@@ -89,13 +313,11 @@ UUID=$EFIUUID                              /boot       vfat        defaults,umas
 UUID=$SWAPUUID   swap        swap        defaults               0 0
 UUID=$MAINUUID   /           ext4        defaults,relatime      0 1
 EOF
-printf "${GREEN}Creation successful!${RESET}\n\n"
-
-
+printf '%sCreation successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # DHCP Configuration
-printf "${MAGENTA}Configuring network...${RESET}\n"
+printf '%sConfiguring network...%s\n' "$MAGENTA" "$RESET"
 cat > /etc/systemd/network/20-wired.network << "EOF"
 [Match]
 Name=en* eth*
@@ -105,62 +327,54 @@ RequiredForOnline=routable
 
 [Network]
 DHCP=yes
-DNS=1.1.1.1
+DNS=1.1.1.2
+DNS=1.0.0.2
 DNS=9.9.9.9
-DNS=8.8.8.8
 EOF
 
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 
-
-
 # Configuring the system hostname
-printf "%s\n" "lfs" > /etc/hostname
+prompt_hostname
+printf '%s\n' "$HOSTNAME" > /etc/hostname
 
 
-
-
-# Customizing the /etc/hosts File
-cat > /etc/hosts << "EOF"
+cat > /etc/hosts << EOF
 # Begin /etc/hosts
 
 127.0.0.1  localhost
 ::1        localhost ip6-localhost ip6-loopback
 ff02::1    ip6-allnodes
 ff02::2    ip6-allrouters
-# This host address
-127.0.1.1  lfs
+127.0.1.1  $HOSTNAME
 
 # End /etc/hosts
 EOF
-printf "${GREEN}Configuration successful!${RESET}\n\n"
 
-
+printf '%sConfiguration successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Configuring the Linux Console
-printf "${MAGENTA}Configuring console...${RESET}\n"
-cat > /etc/vconsole.conf << "EOF"
-KEYMAP=us
-FONT=Lat2-Terminus16
+printf '%sConfiguring console...%s\n' "$MAGENTA" "$RESET"
+prompt_keymap
+prompt_locale
+generate_locale "$SYSTEM_LOCALE"
+select_console_font "$SYSTEM_LOCALE"
+
+cat > /etc/vconsole.conf << EOF
+KEYMAP=$SYSTEM_KEYMAP
+FONT=$SYSTEM_FONT
 EOF
 
-
-
-
-# Configuring the System Locale
-cat > /etc/locale.conf << "EOF"
-LANG=en_CA.UTF-8
+cat > /etc/locale.conf << EOF
+LANG=$SYSTEM_LOCALE
 EOF
-
-
 
 
 # Creating the /etc/inputrc File
 cat > /etc/inputrc << "EOF"
 # Begin /etc/inputrc
-# Modified by Chris Lynn <roryo@roryo.dynup.net>
 
 # Allow the command prompt to wrap to the next line
 set horizontal-scroll-mode Off
@@ -199,14 +413,12 @@ set bell-style none
 "\e[H": beginning-of-line
 "\e[F": end-of-line
 
-# for bash-completions
+# completion/readline behavior
 set show-all-if-ambiguous on
 set visible-stats on
 
 # End /etc/inputrc
 EOF
-
-
 
 
 # Creating the /etc/shells File
@@ -220,22 +432,18 @@ cat > /etc/shells << "EOF"
 EOF
 
 
-
-
-# Working with Core Dumps 
+# Working with Core Dumps
 mkdir -p /etc/systemd/coredump.conf.d
 
 cat > /etc/systemd/coredump.conf.d/maxuse.conf << EOF
 [Coredump]
 MaxUse=5G
 EOF
-printf "${GREEN}Configuration successful!${RESET}\n\n"
-
-
+printf '%sConfiguration successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Install linux-$KERNELA
-printf "${MAGENTA}Installing Kernel $KERNELA...${RESET}\n"
+printf '%sInstalling Kernel %s...%s\n' "$MAGENTA" "$KERNELA" "$RESET"
 run_log_kernela cp -v "/sources/linux-$KERNELA.tar.xz" "/usr/src/linux-$KERNELA.tar.xz"
 cd /usr/src
 
@@ -264,13 +472,11 @@ run_log_kernela rm -rf "/usr/share/doc/linux-$KERNELA"
 run_log_kernela cp -vr Documentation -T "/usr/share/doc/linux-$KERNELA"
 
 run_log_kernela chown -R 0:0 "/usr/src/linux-$KERNELA"
-printf "${GREEN}Install successful!${RESET}\n\n"
-
-
+printf '%sInstall successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Install linux-$KERNELB
-printf "${MAGENTA}Installing Kernel $KERNELB...${RESET}\n"
+printf '%sInstalling Kernel %s...%s\n' "$MAGENTA" "$KERNELB" "$RESET"
 run_log_kernelb cp -v "/sources/linux-$KERNELB.tar.gz" "/usr/src/linux-$KERNELB.tar.gz"
 cd /usr/src
 
@@ -299,9 +505,7 @@ run_log_kernelb rm -rf "/usr/share/doc/linux-$KERNELB"
 run_log_kernelb cp -vr Documentation -T "/usr/share/doc/linux-$KERNELB"
 
 run_log_kernelb chown -R 0:0 "/usr/src/linux-$KERNELB"
-printf "${GREEN}Install successful!${RESET}\n\n"
-
-
+printf '%sInstall successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Configuring Linux Module Load Order
@@ -316,10 +520,8 @@ install uhci_hcd /sbin/modprobe ehci_hcd ; /sbin/modprobe -i uhci_hcd ; true
 EOF
 
 
-
-
 # Using Limine to Set Up the Boot Process
-printf "${MAGENTA}Configuring limine...${RESET}\n"
+printf '%sConfiguring limine...%s\n' "$MAGENTA" "$RESET"
 mounted_efivars=0
 if ! mountpoint -q /sys/firmware/efi/efivars; then
     run_log mount -t efivarfs efivarfs /sys/firmware/efi/efivars
@@ -346,10 +548,7 @@ BOOT_LABEL="LFS Limine Boot Loader"
 EFI_REL_PATH='\EFI\LFS\LIMINEX64.EFI'
 EFI_PART_NUM="$(get_partition_number "$EFI")"
 
-[ -n "$EFI_PART_NUM" ] || {
-    printf "%b\n" "${RED}[ERROR] Could not determine EFI partition number for $EFI${RESET}" >&2
-    exit 1
-}
+[ -n "$EFI_PART_NUM" ] || die "Could not determine EFI partition number for $EFI"
 
 existing_ids="$(
     efibootmgr | awk -v label="$BOOT_LABEL" '
@@ -364,14 +563,14 @@ existing_ids="$(
 )"
 
 if [ -n "$existing_ids" ]; then
-    printf "%b\n" "${BLUE}[INFO] Removing existing EFI boot entry/entries for '${BOOT_LABEL}'.${RESET}"
+    printf '%sINFO:%s Removing existing EFI boot entry/entries for %s.\n' "$BLUE" "$RESET" "$BOOT_LABEL"
     while IFS= read -r bootnum; do
         [ -n "$bootnum" ] || continue
         run_log efibootmgr --delete-bootnum --bootnum "$bootnum" || true
     done <<< "$existing_ids"
 fi
 
-printf "%b\n" "${BLUE}[INFO] Creating EFI boot entry '${BOOT_LABEL}'.${RESET}"
+printf '%sINFO:%s Creating EFI boot entry %s.\n' "$BLUE" "$RESET" "$BOOT_LABEL"
 run_log efibootmgr                      \
       --create                          \
       --disk "$DRIVE"                   \
@@ -381,10 +580,7 @@ run_log efibootmgr                      \
       --unicode
 
 ROOTPARTUUID="$(blkid -s PARTUUID -o value "$MAIN")"
-[ -n "$ROOTPARTUUID" ] || {
-    printf "%b\n" "${RED}[ERROR] Could not determine PARTUUID for $MAIN${RESET}" >&2
-    exit 1
-}
+[ -n "$ROOTPARTUUID" ] || die "Could not determine PARTUUID for $MAIN"
 
 cat > /boot/limine.conf << EOF
 timeout: 5
@@ -400,19 +596,17 @@ remember_last_entry: yes
     kernel_path: boot():/vmlinuz-$KERNELB-lfs
     cmdline: root=PARTUUID=$ROOTPARTUUID rw quiet loglevel=3 audit=0
 EOF
-printf "${GREEN}Configuration successful!${RESET}\n\n"
-
-
+printf '%sConfiguration successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # The End
-printf "${MAGENTA}Final configuration...${RESET}\n"
-printf "%s\n" "$LFS_VERSION" > /etc/lfs-release
+printf '%sFinal configuration...%s\n' "$MAGENTA" "$RESET"
+printf '%s\n' "$LFS_VERSION" > /etc/lfs-release
 
 cat > /etc/lsb-release << EOF
 DISTRIB_ID="Linux From Scratch"
 DISTRIB_RELEASE="$LFS_VERSION"
-DISTRIB_CODENAME="Pioneer"
+DISTRIB_CODENAME="LFS-AI"
 DISTRIB_DESCRIPTION="Linux From Scratch"
 EOF
 
@@ -421,112 +615,48 @@ NAME="Linux From Scratch"
 VERSION="$LFS_VERSION"
 ID=lfs
 PRETTY_NAME="Linux From Scratch $LFS_VERSION"
-VERSION_CODENAME="Pioneer"
+VERSION_CODENAME="LFS-AI"
 HOME_URL="https://www.linuxfromscratch.org/lfs/"
 RELEASE_TYPE="development"
 EOF
 
 cat > /etc/profile << "EOF"
 # Begin /etc/profile
-# Written for Beyond Linux From Scratch
-# by James Robertson <jameswrobertson@earthlink.net>
-# modifications by Dagmar d'Surreal <rivyqntzne@pbzpnfg.arg>
 
-# System wide environment variables and startup programs.
+# System-wide environment variables and startup programs.
+# Bash-specific aliases and functions belong in /etc/bashrc.
 
-# System wide aliases and functions should go in /etc/bashrc.  Personal
-# environment variables and startup programs should go into
-# ~/.bash_profile.  Personal aliases and functions should go into
-# ~/.bashrc.
-
-# Functions to help us manage paths.  Second argument is the name of the
-# path variable to be modified (default: PATH)
-pathremove () {
-        local IFS=':'
-        local NEWPATH
-        local DIR
-        local PATHVARIABLE=${2:-PATH}
-        for DIR in ${!PATHVARIABLE} ; do
-                if [ "$DIR" != "$1" ] ; then
-                  NEWPATH=${NEWPATH:+$NEWPATH:}$DIR
-                fi
-        done
-        export $PATHVARIABLE="$NEWPATH"
-}
-
-pathprepend () {
-        pathremove $1 $2
-        local PATHVARIABLE=${2:-PATH}
-        export $PATHVARIABLE="$1${!PATHVARIABLE:+:${!PATHVARIABLE}}"
-}
-
-pathappend () {
-        pathremove $1 $2
-        local PATHVARIABLE=${2:-PATH}
-        export $PATHVARIABLE="${!PATHVARIABLE:+${!PATHVARIABLE}:}$1"
-}
-
-export -f pathremove pathprepend pathappend
-
-# Set the initial path
 export PATH=/usr/bin
 
-# Attempt to provide backward compatibility with LFS earlier than 11
 if [ ! -L /bin ]; then
-        pathappend /bin
+    PATH=$PATH:/bin
 fi
 
-if [ $EUID -eq 0 ] ; then
-        pathappend /usr/sbin
-        if [ ! -L /sbin ]; then
-                pathappend /sbin
-        fi
-        unset HISTFILE
+if [ "$(id -u)" -eq 0 ]; then
+    PATH=$PATH:/usr/sbin
+    if [ ! -L /sbin ]; then
+        PATH=$PATH:/sbin
+    fi
+    unset HISTFILE
 fi
 
-# Set up some environment variables.
+export PATH
 export HISTSIZE=1000
-export HISTIGNORE="&:[bf]g:exit"
+export HISTIGNORE='&:[bf]g:exit'
 
-# Set some defaults for graphical systems
-export XDG_DATA_DIRS=${XDG_DATA_DIRS:-/usr/share}
-export XDG_CONFIG_DIRS=${XDG_CONFIG_DIRS:-/etc/xdg}
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-$USER}
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/share}"
+export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$USER}"
 
-for script in /etc/profile.d/*.sh ; do
-        if [ -r $script ] ; then
-                . $script
-        fi
+for script in /etc/profile.d/*.sh; do
+    [ -r "$script" ] && . "$script"
 done
-
 unset script
 
 # End /etc/profile
 EOF
 
 install --directory --mode=0755 --owner=root --group=root /etc/profile.d
-
-cat > /etc/profile.d/bash_completion.sh << "EOF"
-# shellcheck shell=sh disable=SC1091,SC2166,SC2268,SC3028,SC3044,SC3054
-# Check for interactive bash and that we haven't already been sourced.
-if [ "x${BASH_VERSION-}" != x -a "x${PS1-}" != x -a "x${BASH_COMPLETION_VERSINFO-}" = x ]; then
-
-    # Check for recent enough version of bash.
-    if [ "${BASH_VERSINFO[0]}" -gt 4 ] ||
-        [ "${BASH_VERSINFO[0]}" -eq 4 -a "${BASH_VERSINFO[1]}" -ge 2 ]; then
-        [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/bash_completion" ] &&
-            . "${XDG_CONFIG_HOME:-$HOME/.config}/bash_completion"
-        if shopt -q progcomp && [ -r /usr/share/bash-completion/bash_completion ]; then
-            # Source completion code.
-            . /usr/share/bash-completion/bash_completion
-        fi
-    fi
-
-fi
-
-EOF
-
-install --directory --mode=0755 --owner=root --group=root /etc/bash_completion.d
 
 cat > /etc/profile.d/dircolors.sh << "EOF"
 # Setup for /bin/ls and /bin/grep to support color, the alias is in /etc/bashrc.
@@ -540,22 +670,37 @@ fi
 EOF
 
 cat > /etc/profile.d/extrapaths.sh << "EOF"
-if [ -d /usr/local/lib/pkgconfig ] ; then
-        pathappend /usr/local/lib/pkgconfig PKG_CONFIG_PATH
-fi
-if [ -d /usr/local/bin ]; then
-        pathprepend /usr/local/bin
-fi
-if [ -d /usr/local/sbin -a $EUID -eq 0 ]; then
-        pathprepend /usr/local/sbin
+case ":${PKG_CONFIG_PATH:-}:" in
+    *:/usr/local/lib/pkgconfig:*) ;;
+    *) [ -d /usr/local/lib/pkgconfig ] && PKG_CONFIG_PATH="${PKG_CONFIG_PATH:+$PKG_CONFIG_PATH:}/usr/local/lib/pkgconfig" ;;
+esac
+export PKG_CONFIG_PATH
+
+case ":$PATH:" in
+    *:/usr/local/bin:*) ;;
+    *) [ -d /usr/local/bin ] && PATH="/usr/local/bin:$PATH" ;;
+esac
+
+if [ "$(id -u)" -eq 0 ]; then
+    case ":$PATH:" in
+        *:/usr/local/sbin:*) ;;
+        *) [ -d /usr/local/sbin ] && PATH="/usr/local/sbin:$PATH" ;;
+    esac
 fi
 
-if [ -d /usr/local/share ]; then
-        pathprepend /usr/local/share XDG_DATA_DIRS
-fi
+case ":${XDG_DATA_DIRS:-}:" in
+    *:/usr/local/share:*) ;;
+    *) [ -d /usr/local/share ] && XDG_DATA_DIRS="/usr/local/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}" ;;
+esac
+export XDG_DATA_DIRS
 
-# Set some defaults before other applications add to these paths.
-pathappend /usr/share/info INFOPATH
+case ":${INFOPATH:-}:" in
+    *:/usr/share/info:*) ;;
+    *) INFOPATH="${INFOPATH:+$INFOPATH:}/usr/share/info" ;;
+esac
+export INFOPATH
+
+export PATH
 EOF
 
 cat > /etc/profile.d/readline.sh << "EOF"
@@ -568,7 +713,7 @@ EOF
 
 cat > /etc/profile.d/umask.sh << "EOF"
 # By default, the umask should be set.
-if [ "$(id -gn)" = "$(id -un)" -a $EUID -gt 99 ] ; then
+if [ "$(id -gn)" = "$(id -un)" ] && [ "$(id -u)" -gt 99 ]; then
   umask 002
 else
   umask 022
@@ -576,30 +721,12 @@ fi
 EOF
 
 cat > /etc/profile.d/i18n.sh << "EOF"
-# Set up i18n variables
-for i in $(locale); do
-  unset ${i%=*}
-done
-
-if [[ "$TERM" = linux ]]; then
-  export LANG=C.UTF-8
-else
-  source /etc/locale.conf
-
-  for i in $(locale); do
-    key=${i%=*}
-    if [[ -v $key ]]; then
-      export $key
-    fi
-  done
-fi
+. /etc/locale.conf
+export LANG
 EOF
 
 cat > /etc/bashrc << "EOF"
 # Begin /etc/bashrc
-# Written for Beyond Linux From Scratch
-# by James Robertson <jameswrobertson@earthlink.net>
-# updated by Bruce Dubbs <bdubbs@linuxfromscratch.org>
 
 # System wide aliases and functions.
 
@@ -655,50 +782,38 @@ EOF
 
 cat > /root/.bash_profile << "EOF"
 # Begin ~/.bash_profile
-# Written for Beyond Linux From Scratch
-# by James Robertson <jameswrobertson@earthlink.net>
-# updated by Bruce Dubbs <bdubbs@linuxfromscratch.org>
-
-# Personal environment variables and startup programs.
-
-# Personal aliases and functions should go in ~/.bashrc.  System wide
-# environment variables and startup programs are in /etc/profile.
-# System wide aliases and functions are in /etc/bashrc.
 
 if [ -f "$HOME/.bashrc" ] ; then
-  source $HOME/.bashrc
+  . "$HOME/.bashrc"
 fi
 
 if [ -d "$HOME/bin" ] ; then
-  pathprepend $HOME/bin
+  case ":$PATH:" in
+    *:"$HOME/bin":*) ;;
+    *) PATH="$HOME/bin:$PATH" ;;
+  esac
+  export PATH
 fi
-
-# Having . in the PATH is dangerous
-#if [ $EUID -gt 99 ]; then
-#  pathappend .
-#fi
 
 # End ~/.bash_profile
 EOF
 
 cat > /root/.profile << "EOF"
 # Begin ~/.profile
-# Personal environment variables and startup programs.
 
 if [ -d "$HOME/bin" ] ; then
-  pathprepend $HOME/bin
+  case ":$PATH:" in
+    *:"$HOME/bin":*) ;;
+    *) PATH="$HOME/bin:$PATH" ;;
+  esac
+  export PATH
 fi
-
-# Set up user specific i18n variables
-#export LANG=<ll>_<CC>.<charmap><@modifiers>
 
 # End ~/.profile
 EOF
 
 cat > /root/.bashrc << "EOF"
 # Begin ~/.bashrc
-# Written for Beyond Linux From Scratch
-# by James Robertson <jameswrobertson@earthlink.net>
 
 # Personal aliases and functions.
 
@@ -708,7 +823,7 @@ cat > /root/.bashrc << "EOF"
 # in /etc/bashrc.
 
 if [ -f "/etc/bashrc" ] ; then
-  source /etc/bashrc
+  . /etc/bashrc
 fi
 
 # Set up user specific i18n variables
@@ -719,8 +834,6 @@ EOF
 
 cat > /root/.bash_logout << "EOF"
 # Begin ~/.bash_logout
-# Written for Beyond Linux From Scratch
-# by James Robertson <jameswrobertson@earthlink.net>
 
 # Personal items to perform on logout.
 
@@ -730,15 +843,13 @@ EOF
 cat > /etc/issue << "EOF"
 \d \t
 
-Welcome to Linux From Scratch - Pioneer Edition!
- 
+Welcome to Linux From Scratch (LFS-AI)!
+
 EOF
-printf "${GREEN}Configuration successful!${RESET}\n\n"
-
-
+printf '%sConfiguration successful!%s\n\n' "$GREEN" "$RESET"
 
 # Make Skel files and services
-printf "${MAGENTA}Make skel files and network services...${RESET}\n"
+printf '%sCreating skeleton files and enabling network services...%s\n' "$MAGENTA" "$RESET"
 pushd /usr/share/info > /dev/null
 run_log rm -fv dir
 for f in *; do
@@ -766,18 +877,14 @@ run_log mkdir -pv /etc/skel/Public
 run_log mkdir -pv /etc/skel/Templates
 run_log mkdir -pv /etc/skel/Videos
 run_log cp -v /root/.profile /etc/skel/.profile
-run_log cp -v /root/.bash_profile /etc/skel/.bash_profile
 run_log cp -v /root/.bashrc /etc/skel/.bashrc
-run_log cp -v /root/.bash_logout /etc/skel/.bash_logout
 dircolors -p > /etc/skel/.dircolors
-
 
 run_log systemctl enable systemd-resolved
 run_log systemctl enable systemd-networkd
 
-
 if [ "$mounted_efivars" -eq 1 ]; then
     run_log umount /sys/firmware/efi/efivars
 fi
-printf "${GREEN}Successful!${RESET}\n\n"
+printf '%sSuccessful!%s\n\n' "$GREEN" "$RESET"
 

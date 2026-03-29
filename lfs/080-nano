@@ -3,16 +3,24 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=nano
 VERSION=8.7.1
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
@@ -21,16 +29,13 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$PACKAGE-$VERSION.tar.xz" >&2
-    exit 1
-}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
 
 cd /sources
 
@@ -38,44 +43,100 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log ./configure --prefix=/usr     \
                     --sysconfdir=/etc \
                     --enable-utf8     \
                     --docdir="/usr/share/doc/$PACKAGE-$VERSION"
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 
 run_log install -v -m644 doc/{nano.html,sample.nanorc} "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
-mkdir -p "/usr/pkg/$PACKAGE/$VERSION/etc"
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/etc"
 
 cat > "/usr/pkg/$PACKAGE/$VERSION/etc/nanorc" << "EOF"
-set autoindent
+## Constantly report the cursor position, in the status bar or minibar.
 set constantshow
-set fill 72
+
+## Set the target width for automatic hard-wrapping and for justifying
+## paragraphs.  If the specified value is 0 or less, the wrapping point
+## will be the terminal's width minus this number.
+set fill -8
+
+## Remember the used search/replace strings for the next session.
 set historylog
+
+## Enable vim-style lock-files.  This is just to let a vim user know you
+## are editing a file [s]he is trying to edit and vice versa.  There are
+## no plans to implement vim-style undo state in these files.
+set locking
+
+## Switch on multiple file buffers (inserting a file will put it into
+## a separate buffer).
 set multibuffer
-set nohelp
+
+## Remember the cursor position in each file for the next editing session.
 set positionlog
+
+## Make status-bar messages disappear after 1 keystroke instead of after 20.
 set quickblank
-set regexp
+
+## Use the end of the title bar for some state flags: I = auto-indenting,
+## M = mark, L = hard-wrapping long lines, R = recording, S = soft-wrapping.
+set stateflags
+
+## To include most of the existing syntax definitions, you can do:
+include "/usr/share/nano/*.nanorc"
 EOF
-printf "${GREEN}Package successful!${RESET}\n"
+
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/nano/default.nanorc" << "EOF"
+## This is an example of a default syntax.  The default syntax is used for
+## files that do not match any other syntax.
+
+syntax default
+comment "#"
+
+# Spaces in front of tabs.
+color ,red " +	+"
+
+# Nano's release motto, then name plus version.
+color italic,lime "\<[Nn]ano [1-8]\.[0-9][-.[:alnum:]]* "[^"]+""
+color brightred "\<(GNU )?[Nn]ano [1-8]\.[0-9][-.[:alnum:]]*\>"
+
+# Dates
+color latte "\<[12][0-9]{3}\.(0[1-9]|1[012])\.(0[1-9]|[12][0-9]|3[01])\>"
+
+# Email addresses.
+color magenta "<[[:alnum:].%_+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}>"
+
+# URLs.
+color lightblue "\<https?://\S+\.\S+[^])>[:space:],.]"
+
+# Bracketed captions in certain config files.
+color brightgreen "^\[[^][]+\]$"
+
+# Comments.
+color cyan "^[[:blank:]]*#.*"
+
+# Control codes.
+color orange "[[:cntrl:]]"
+EOF
+printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
 dir
 EOF
 
-printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"
 run_log graft -iV "$PACKAGE/$VERSION"
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
 rm -rf "$PACKAGE-$VERSION"

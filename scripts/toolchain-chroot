@@ -5,20 +5,25 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
 
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
 
 
 # Create directories
-printf "${GREEN}Entered chroot!${RESET}\n"
-printf "\n${MAGENTA}Creating directories...${RESET}\n"
+printf '%sEntered chroot!%s\n' "$GREEN" "$RESET"
+printf '\n%sCreating directories...%s\n' "$MAGENTA" "$RESET"
 mkdir -p /{home,mnt,opt,srv}
 
 mkdir -p /etc/{opt,sysconfig}
@@ -41,13 +46,11 @@ install -d -m 1777 /tmp /var/tmp
 
 rm -rf /logs/chroot
 mkdir -p /logs/chroot
-printf "${GREEN}Creation successful!${RESET}\n"
-
-
+printf '%sCreation successful!%s\n' "$GREEN" "$RESET"
 
 
 # Create essential files and symlinks
-printf "\n${MAGENTA}Creating essential files...${RESET}\n"
+printf '\n%sCreating essential files...%s\n' "$MAGENTA" "$RESET"
 ln -sf /proc/self/mounts /etc/mtab
 
 cat > /etc/hosts << EOF
@@ -110,10 +113,10 @@ nogroup:x:65534:
 EOF
 
 grep -q '^tester:' /etc/passwd || \
-    printf "tester:x:101:101::/home/tester:/bin/bash\n" >> /etc/passwd
+    printf 'tester:x:101:101::/home/tester:/bin/bash\n' >> /etc/passwd
 
 grep -q '^tester:' /etc/group || \
-    printf "tester:x:101:\n" >> /etc/group
+    printf 'tester:x:101:\n' >> /etc/group
 
 install -o tester -d /home/tester
 
@@ -121,40 +124,35 @@ touch /var/log/{btmp,lastlog,faillog,wtmp}
 chgrp utmp /var/log/lastlog
 chmod --quiet 664  /var/log/lastlog
 chmod --quiet 600  /var/log/btmp
-printf "${GREEN}File creation successful!${RESET}\n\n"
-
-
+printf '%sFile creation successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Run install scripts
-[ -d /lfs-ai/chroot ] || {
-    printf "${RED}[ERROR] Missing /lfs-ai/chroot${RESET}\n" >&2
-    exit 1
-}
+[ -d /lfs-ai/chroot ] || die 'Missing /lfs-ai/chroot'
 
 cd /lfs-ai
 
 found_script=0
+shopt -s nullglob
+
 for script in /lfs-ai/chroot/*; do
-    if [ -f "$script" ] && [ -x "$script" ]; then
+    if [[ -f "$script" && -x "$script" ]]; then
         found_script=1
         bash "$script"
     fi
 done
 
-[ "$found_script" -eq 1 ] || {
-    printf "${RED}ERROR:${RESET} No executable scripts found in /lfs-ai/chroot\n" >&2
-    exit 1
-}
-
-
+if (( found_script != 1 )); then
+    die 'No executable scripts found in /lfs-ai/chroot'
+fi
 
 
 # Clean up temporary system
-printf "\n${MAGENTA}Cleaning up temporary files...${RESET}\n"
+printf '\n%sCleaning up temporary files...%s\n' "$MAGENTA" "$RESET"
 rm -rf /usr/share/{info,man,doc}/*
 
 find /usr/{lib,libexec} -name \*.la -delete
 
 rm -rf /tools
-printf "${GREEN}Temporary files cleaned up. Build environment complete!${RESET}\n"
+
+printf '%sTemporary files cleaned up. Build environment complete!%s\n' "$GREEN" "$RESET"

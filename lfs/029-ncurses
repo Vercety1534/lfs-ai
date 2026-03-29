@@ -3,16 +3,24 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=ncurses
 VERSION=6.6
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/lfs/phase2/$PACKAGE-$VERSION.log"
@@ -21,16 +29,13 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$PACKAGE-$VERSION.tar.gz" >&2
-    exit 1
-}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
 
 cd /sources
 
@@ -38,7 +43,7 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log ./configure --prefix=/usr           \
                     --mandir=/usr/share/man \
                     --with-shared           \
@@ -47,30 +52,30 @@ run_log ./configure --prefix=/usr           \
                     --with-cxx-shared       \
                     --enable-pc-files       \
                     --with-pkg-config-libdir=/usr/lib/pkgconfig
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 
 sed -e 's/^#if.*XOPEN.*$/#if 1/' \
     -i "/usr/pkg/$PACKAGE/$VERSION/usr/include/curses.h"
 
 for lib in ncurses form panel menu ; do
-    run_log ln -sf "lib${lib}w.so" "/usr/pkg/$PACKAGE/$VERSION/usr/lib/lib${lib}.so"
-    run_log ln -sf "${lib}w.pc" "/usr/pkg/$PACKAGE/$VERSION/usr/lib/pkgconfig/${lib}.pc"
+    run_log ln -svf "lib${lib}w.so" "/usr/pkg/$PACKAGE/$VERSION/usr/lib/lib${lib}.so"
+    run_log ln -svf "${lib}w.pc" "/usr/pkg/$PACKAGE/$VERSION/usr/lib/pkgconfig/${lib}.pc"
 done
 
-run_log ln -sf libncursesw.so "/usr/pkg/$PACKAGE/$VERSION/usr/lib/libcurses.so"
+run_log ln -svf libncursesw.so "/usr/pkg/$PACKAGE/$VERSION/usr/lib/libcurses.so"
 
 mkdir -p "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 run_log cp -v -R doc -T "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
-printf "${GREEN}Package successful!${RESET}\n"
+printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make distclean
 run_log ./configure --prefix=/usr    \
                     --with-shared    \
@@ -80,7 +85,7 @@ run_log ./configure --prefix=/usr    \
                     --with-abi-version=5
 run_log make sources libs
 run_log cp -av lib/lib*.so.5* "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 cd /sources
 rm -rf "$PACKAGE-$VERSION"

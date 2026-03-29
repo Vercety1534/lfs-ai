@@ -3,22 +3,27 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=binutils
 VERSION=2.46.0
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-base_dir="$(cd -- "$script_dir/.." && pwd)"
-CONFIG_FILE="$base_dir/settings.conf"
 
-source "$CONFIG_FILE"
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
+[ -n "${LFS:-}" ] || die 'LFS is not set.'
+[ -n "${LFS_TGT:-}" ] || die 'LFS_TGT is not set.'
+
 
 # Log command
 LOG_FILE="$LFS/logs/toolchain/$PACKAGE-$VERSION-phase1.log"
@@ -27,21 +32,13 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -n "$LFS_TGT" ] || {
-    printf "${RED}[ERROR] LFS_TGT is not set.${RESET}\n" >&2
-    exit 1
-}
 
-[ -f "$LFS/sources/$PACKAGE-$VERSION.tar.xz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "$LFS/sources/$PACKAGE-$VERSION.tar.xz" >&2
-    exit 1
-}
+[ -f "$LFS/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: $LFS/sources/$PACKAGE-$VERSION.tar.xz"
 
 cd "$LFS/sources"
 
@@ -52,7 +49,7 @@ cd "$LFS/sources/$PACKAGE-$VERSION"
 mkdir -p build
 cd       build
 
-printf "\n${MAGENTA}Configuring %s phase 1...${RESET}\n" "$PACKAGE"
+printf '\n%sConfiguring %s phase 1...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log ../configure --prefix="$LFS/tools"  \
                      --with-sysroot="$LFS"  \
                      --target="$LFS_TGT"    \
@@ -62,15 +59,15 @@ run_log ../configure --prefix="$LFS/tools"  \
                      --disable-werror       \
                      --enable-new-dtags     \
                      --enable-default-hash-style=gnu
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s phase 1...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s phase 1...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Installing %s phase 1...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s phase 1...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make install
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd "$LFS/sources"
 rm -rf "$PACKAGE-$VERSION"

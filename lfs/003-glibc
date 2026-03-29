@@ -3,17 +3,25 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=glibc
 VERSION=2.43
 TZVERSION=2026a
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/lfs/phase1/$PACKAGE-$VERSION.log"
@@ -22,28 +30,15 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$PACKAGE-$VERSION.tar.xz" >&2
-    exit 1
-}
 
-[ -f "/sources/glibc-fhs-1.patch" ] || {
-    printf "${RED}[ERROR] Missing patch: %s${RESET}\n" \
-        "/sources/glibc-fhs-1.patch" >&2
-    exit 1
-}
-
-[ -f "/sources/tzdata$TZVERSION.tar.gz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/tzdata$TZVERSION.tar.gz" >&2
-    exit 1
-}
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
+[ -f "/sources/glibc-fhs-1.patch" ] || die "Missing patch: /sources/glibc-fhs-1.patch"
+[ -f "/sources/tzdata$TZVERSION.tar.gz" ] || die "Missing source archive: /sources/tzdata$TZVERSION.tar.gz"
 
 cd /sources
 
@@ -51,15 +46,19 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Patching %s...${RESET}\n" "$PACKAGE"
+printf '%sPatching %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+sed -e '/while..ancount/c\  for (; ancount > 0; --ancount)'  \
+    -e '/binary_hnok..expected/s/expected_name/name_buffer/' \
+    -i resolv/nss_dns/dns-host.c
+
 run_log patch -Np1 -i ../glibc-fhs-1.patch
-printf "${GREEN}Patch successful!${RESET}\n"
+printf '%sPatch successful!%s\n' "$GREEN" "$RESET"
 
 mkdir -p build
 cd       build
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
-printf "rootsbindir=/usr/sbin\n" > configparms
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+printf 'rootsbindir=/usr/sbin\n' > configparms
 
 run_log ../configure --prefix=/usr                   \
                      --disable-werror                \
@@ -67,13 +66,13 @@ run_log ../configure --prefix=/usr                   \
                      libc_cv_slibdir="/usr/lib"      \
                      --enable-stack-protector=strong \
                      --enable-kernel=6.6
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 touch /etc/ld.so.conf
 sed '/test-installation/s@$(PERL)@echo not running@' -i ../Makefile
 
@@ -82,7 +81,8 @@ run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 sed '/RTLDLIST=/s@/usr@@g' -i "/usr/pkg/$PACKAGE/$VERSION/usr/bin/ldd"
 
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" localedata/install-locales
-printf "${GREEN}Package successful!${RESET}\n"
+run_log sh -c "sed '1,3d; s#/# #; s/[[:space:]]\\\\$//' '/sources/$PACKAGE-$VERSION/localedata/SUPPORTED' > '/usr/pkg/$PACKAGE/$VERSION/usr/share/i18n/SUPPORTED'"
+printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 cat > /etc/nsswitch.conf << "EOF"
 # Begin /etc/nsswitch.conf
@@ -102,11 +102,11 @@ rpc: files
 # End /etc/nsswitch.conf
 EOF
 
-printf "${MAGENTA}Packaging tzdata%s...${RESET}\n" "$TZVERSION"
-tar -xf "../../tzdata$TZVERSION.tar.gz"
+printf '%sPackaging tzdata%s...%s\n' "$MAGENTA" "$TZVERSION" "$RESET"
+run_log tar -xf "../../tzdata$TZVERSION.tar.gz"
 
 ZONEINFO="/usr/pkg/$PACKAGE/$VERSION/usr/share/zoneinfo"
-mkdir -p "$ZONEINFO"/{posix,right}
+run_log mkdir -pv "$ZONEINFO"/{posix,right}
 
 for tz in etcetera southamerica northamerica europe africa antarctica  \
           asia australasia backward; do
@@ -119,8 +119,8 @@ run_log cp -v zone.tab zone1970.tab iso3166.tab "$ZONEINFO"
 run_log zic -d "$ZONEINFO" -p America/Toronto
 unset ZONEINFO tz
 
-ln -sf "/usr/pkg/$PACKAGE/$VERSION/usr/share/zoneinfo/America/Toronto" "/usr/pkg/$PACKAGE/$VERSION/etc/localtime"
-printf "${GREEN}Package successful!${RESET}\n"
+run_log ln -svf "/usr/pkg/$PACKAGE/$VERSION/usr/share/zoneinfo/America/Toronto" "/usr/pkg/$PACKAGE/$VERSION/etc/localtime"
+printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 cat > /etc/ld.so.conf << "EOF"
 # Begin /etc/ld.so.conf
@@ -134,7 +134,7 @@ cat >> /etc/ld.so.conf << "EOF"
 include /etc/ld.so.conf.d/*.conf
 
 EOF
-mkdir -p /etc/ld.so.conf.d
+run_log mkdir -pv /etc/ld.so.conf.d
 
 cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
 dir

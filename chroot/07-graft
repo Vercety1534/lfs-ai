@@ -3,16 +3,24 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=graft
 VERSION=2.16
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/chroot/$PACKAGE-$VERSION.log"
@@ -21,7 +29,7 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
@@ -30,16 +38,13 @@ run_log_error() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}There was an error, however it is normal here.${RESET}\n" >&2
+        printf '%sINFO:%s Non-zero exit expected here; continuing.\n' "$MAGENTA" "$RESET" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$VERSION.tar.gz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$VERSION.tar.gz" >&2
-    exit 1
-}
+
+[ -f "/sources/$VERSION.tar.gz" ] || die "Missing source archive: /sources/$VERSION.tar.gz"
 
 cd /sources
 
@@ -47,7 +52,7 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 set +e
 run_log_error make -f Makefile.dist
 set -e
@@ -59,19 +64,19 @@ sed -i \
   -e 's|^MAN[[:space:]]*=.*|MAN = $(TOP)/usr/share/man|' \
   -e 's|^DOC[[:space:]]*=.*|DOC = $(TOP)/usr/share/doc/graft-2.16|' \
   Makefile
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make install
 
 rm -f /usr/pkg/"$PACKAGE-$VERSION"/usr/share/doc/"$PACKAGE-$VERSION"/.nograft
 
 run_log /usr/pkg/"$PACKAGE-$VERSION"/usr/bin/graft -iV "$PACKAGE-$VERSION"
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
 rm -rf "$PACKAGE-$VERSION"

@@ -3,16 +3,24 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 PACKAGE=gcc
 VERSION=15.2.0
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
 
 # Log command
 LOG_FILE="/logs/lfs/phase2/$PACKAGE-$VERSION.log"
@@ -21,16 +29,13 @@ run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
     else
-        printf "${RED}[ERROR] %s failed. See %s${RESET}\n" "$*" "$LOG_FILE" >&2
+        printf '%sERROR:%s %s failed. See %s\n' "$RED" "$RESET" "$*" "$LOG_FILE" >&2
         return 1
     fi
 }
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || {
-    printf "${RED}[ERROR] Missing source archive: %s${RESET}\n" \
-        "/sources/$PACKAGE-$VERSION.tar.xz" >&2
-    exit 1
-}
+
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
 
 cd /sources
 
@@ -38,14 +43,14 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf "${MAGENTA}Configuring %s...${RESET}\n" "$PACKAGE"
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 sed -i 's/char [*]q/const &/' libgomp/affinity-fmt.c
 
 case "$(uname -m)" in
-  x86_64)
-    sed -e '/m64=/s/lib64/lib/' \
-        -i.orig gcc/config/i386/t-linux64
-  ;;
+    x86_64)
+        sed -e '/m64=/s/lib64/lib/' \
+            -i.orig gcc/config/i386/t-linux64
+    ;;
 esac
 
 
@@ -65,13 +70,13 @@ run_log env LD=ld ../configure             \
                   --enable-lto             \
                   --with-zstd              \
                   --with-system-zlib
-printf "${GREEN}Configuration successful!${RESET}\n"
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Building %s...${RESET}\n" "$PACKAGE"
+printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make
-printf "${GREEN}Build successful!${RESET}\n"
+printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
-printf "${MAGENTA}Packaging %s...${RESET}\n" "$PACKAGE"
+printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 ulimit -s -H unlimited
 
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
@@ -84,14 +89,14 @@ gcc_triplet="$(basename "$(dirname "$gcc_libdir")")"
 
 for path in "$gcc_libdir/include" "$gcc_libdir/include-fixed"; do
     [ -e "$path" ] || continue
-    chown -R root:root "$path"
+    run_log chown -R root:root "$path"
 done
 
-run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
-run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1"
-run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/lib/bfd-plugins"
-run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/gdb/auto-load/usr/lib"
-run_log install -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/info"
+run_log install -vd "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
+run_log install -vd "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1"
+run_log install -vd "/usr/pkg/$PACKAGE/$VERSION/usr/lib/bfd-plugins"
+run_log install -vd "/usr/pkg/$PACKAGE/$VERSION/usr/share/gdb/auto-load/usr/lib"
+run_log install -vd "/usr/pkg/$PACKAGE/$VERSION/usr/share/info"
 
 run_log ln -svfr "/usr/pkg/$PACKAGE/$VERSION/usr/bin/cpp" "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
 run_log ln -svf gcc.1 "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1/cc.1"
@@ -103,21 +108,16 @@ for f in "/usr/pkg/$PACKAGE/$VERSION/usr/lib/"*gdb.py; do
     [ -e "$f" ] || continue
     run_log mv -v "$f" "/usr/pkg/$PACKAGE/$VERSION/usr/share/gdb/auto-load/usr/lib"
 done
+printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
 dir
 EOF
 
-printf "${GREEN}Package successful!${RESET}\n"
-
-cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
-dir
-EOF
-
-printf "${MAGENTA}Installing %s...${RESET}\n" "$PACKAGE"
+printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"
 run_log graft -iV "$PACKAGE/$VERSION"
-printf "${GREEN}Install successful!${RESET}\n\n\n"
+printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
 rm -rf "$PACKAGE-$VERSION"

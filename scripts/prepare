@@ -5,24 +5,28 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 umask 022
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 base_dir="$(cd -- "$script_dir/.." && pwd)"
-CONFIG_FILE="$base_dir/settings.conf"
 
 
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
 
 
-# Validate settings
+# Function to prompt user to continue
 prompt_confirm() {
     local prompt="${1:-Continue?}"
 
@@ -31,222 +35,21 @@ prompt_confirm() {
         case "$REPLY" in
             [yY]|[yY][eE][sS]) return 0 ;;
             [nN]|[nN][oO]|"") die "Aborted by user." ;;
-            *) printf "${RED}ERROR:${RESET} invalid input\n" ;;
+            *) printf '%sERROR:%s invalid input\n' "$RED" "$RESET" ;;
         esac
     done
 }
 
-die() {
-    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
-    exit 1
-}
-
-validate_placeholder() {
-    local name="$1"
-    local value="$2"
-
-    case "$value" in
-        REPLACE_ME|/dev/REPLACE_ME)
-            die "$name is still set to a placeholder value."
-            ;;
-    esac
-}
-
-validate_drive_name() {
-    local value="$1"
-
-    validate_placeholder "DRIVE" "$value"
-
-    case "$value" in
-        /dev/sd[a-z]|/dev/vd[a-z]|/dev/xvd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
-            ;;
-        *)
-            die "DRIVE must be a whole disk like /dev/sda, /dev/vda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
-            ;;
-    esac
-
-    case "$value" in
-        /dev/sd[a-z][0-9]|/dev/vd[a-z][0-9]|/dev/xvd[a-z][0-9]|/dev/nvme[0-9]n[0-9]p[0-9]|/dev/mmcblk[0-9]p[0-9])
-            die "DRIVE must be a whole disk, not a partition. Got: $value"
-            ;;
-    esac
-
-    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
-}
-
-validate_size() {
-    local name="$1"
-    local value="$2"
-    local number
-
-    [ -n "$value" ] || die "$name is empty."
-
-    case "$value" in
-        *[!0-9KMGT]*|"")
-            die "$name must be a size like 512M, 2G, or 64G. Got: $value"
-            ;;
-    esac
-
-    case "$value" in
-        *[KMGT])
-            ;;
-        *)
-            die "$name must end in K, M, G, or T. Got: $value"
-            ;;
-    esac
-
-    number="${value%[KMGT]}"
-
-    [ -n "$number" ] || die "$name is missing a numeric value. Got: $value"
-
-    case "$number" in
-        *[!0-9]*)
-            die "$name must begin with digits. Got: $value"
-            ;;
-    esac
-
-    [ "$number" -gt 0 ] || die "$name must be greater than 0. Got: $value"
-}
-
-validate_min_size() {
-    local name="$1"
-    local value="$2"
-    local min_num="$3"
-    local min_unit="$4"
-    local number unit value_mib min_mib
-
-    number="${value%[KMGT]}"
-    unit="${value##*[0-9]}"
-
-    case "$unit" in
-        K) value_mib=$((number / 1024)) ;;
-        M) value_mib="$number" ;;
-        G) value_mib=$((number * 1024)) ;;
-        T) value_mib=$((number * 1024 * 1024)) ;;
-        *)
-            die "$name has unsupported unit: $unit"
-            ;;
-    esac
-
-    case "$min_unit" in
-        M) min_mib="$min_num" ;;
-        G) min_mib=$((min_num * 1024)) ;;
-        T) min_mib=$((min_num * 1024 * 1024)) ;;
-        *)
-            die "Internal error: unsupported minimum unit $min_unit for $name"
-            ;;
-    esac
-
-    [ "$value_mib" -ge "$min_mib" ] || die "$name must be at least ${min_num}${min_unit}. Got: $value"
-}
-
-validate_nonempty_path() {
-    local name="$1"
-    local value="$2"
-
-    [ -n "$value" ] || die "$name is empty."
-
-    case "$value" in
-        /*)
-            ;;
-        *)
-            die "$name must be an absolute path. Got: $value"
-            ;;
-    esac
-}
-
-validate_password() {
-    local name="$1"
-    local value="$2"
-
-    validate_placeholder "$name" "$value"
-    [ -n "$value" ] || die "$name is empty."
-    [ "${#value}" -ge 8 ] || die "$name must be at least 8 characters long."
-}
-
-derive_partitions() {
-    case "$DRIVE" in
-        /dev/nvme*|/dev/mmcblk*)
-            EFI="${DRIVE}p1"
-            SWAP="${DRIVE}p2"
-            MAIN="${DRIVE}p3"
-            ;;
-        /dev/sd*|/dev/vd*|/dev/xvd*)
-            EFI="${DRIVE}1"
-            SWAP="${DRIVE}2"
-            MAIN="${DRIVE}3"
-            ;;
-        *)
-            die "Unsupported DRIVE format: $DRIVE"
-            ;;
-    esac
-}
-
-validate_make_jobs() {
-    local value="$1"
-    local jobs
-
-    [ -n "$value" ] || die "MAKE_JOBS is empty."
-
-    case "$value" in
-        -j[0-9]*)
-            jobs="${value#-j}"
-            ;;
-        *)
-            die "MAKE_JOBS must look like -j4 or -j16. Got: $value"
-            ;;
-    esac
-
-    case "$jobs" in
-        *[!0-9]*|"")
-            die "MAKE_JOBS must contain a positive integer after -j. Got: $value"
-            ;;
-    esac
-
-    [ "$jobs" -ge 1 ] || die "MAKE_JOBS must be at least -j1. Got: $value"
-}
-
-validate_config() {
-    validate_drive_name "$DRIVE"
-
-    validate_size "EFI_SIZE" "$EFI_SIZE"
-    validate_min_size "EFI_SIZE" "$EFI_SIZE" 512 "M"
-
-    validate_size "SWAP_SIZE" "$SWAP_SIZE"
-    validate_min_size "SWAP_SIZE" "$SWAP_SIZE" 1 "G"
-
-    validate_nonempty_path "LFS" "$LFS"
-
-    validate_password "LFS_PASS" "$LFS_PASS"
-
-    validate_make_jobs "$MAKE_JOBS"
-
-    [ "$LFS" != "/" ] || die "LFS cannot be /"
-    [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
-    [ "$LFS" != "/home" ] || die "LFS cannot be /home"
-    [ "$LFS" != "/mnt" ] || die "LFS cannot be /mnt"
-    [ "$LFS" != "/root" ] || die "LFS cannot be /root"
-
-    derive_partitions
-
-    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
-    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
-    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
-}
-
-load_config() {
-    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
-
-    source "$CONFIG_FILE"
-
-    validate_config
-    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
-}
-
-
-
 
 # Host system safety check
+require_var() {
+    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
+}
+
+for var in DRIVE EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS; do
+    require_var "$var"
+done
+
 get_parent_disk() {
     local dev="$1"
     local pkname
@@ -286,23 +89,21 @@ release_drive_usage() {
     ensure_not_system_disk
 
     if grep -q "^$SWAP[[:space:]]" /proc/swaps; then
-        printf "Disabling swap on %s\n" "$SWAP"
+        printf '  - Disabling swap: %s\n' "$SWAP"
         swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
         swap_changes=1
     fi
 
     while read -r part mountpoint || [ -n "$part" ]; do
         [ -n "$part" ] || continue
-
         case "$part" in
             "$DRIVE") continue ;;
             "$DRIVE"[0-9]*|"$DRIVE"p[0-9]*) ;;
             *) continue ;;
         esac
-
         case "$mountpoint" in
             /*)
-                printf "Unmounting %s from %s\n" "$part" "$mountpoint"
+                printf '  - Unmounting %s from %s\n' "$part" "$mountpoint"
                 umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
                 mount_changes=1
                 ;;
@@ -314,14 +115,9 @@ release_drive_usage() {
     partprobe "$DRIVE" >/dev/null 2>&1 || true
     udevadm settle >/dev/null 2>&1 || true
 
-    if [ "$swap_changes" -eq 0 ] && [ "$mount_changes" -eq 0 ]; then
-        printf "${GREEN}No active mounts or swap found on target drive.${RESET}\n"
-    else
-        printf "${GREEN}Target drive released successfully.${RESET}\n"
-    fi
+    [ "$swap_changes" -eq 0 ] && [ "$mount_changes" -eq 0 ] && return 1
+    return 0
 }
-
-
 
 
 # Wipe Drive
@@ -342,139 +138,7 @@ erase_drive() {
 }
 
 
-
-
-# Load settings.conf
-load_config
-printf "\n${MAGENTA}Installation configuration:${RESET}\n"
-printf "Drive:           ${BLUE}%s${RESET}\n" "$DRIVE"
-printf "EFI partition:   ${BLUE}%s${RESET}\n" "$EFI"
-printf "SWAP partition:  ${BLUE}%s${RESET}\n" "$SWAP"
-printf "ROOT partition:  ${BLUE}%s${RESET}\n" "$MAIN"
-printf "EFI size:        ${BLUE}%s${RESET}\n" "$EFI_SIZE"
-printf "Swap size:       ${BLUE}%s${RESET}\n" "$SWAP_SIZE"
-printf "Mount point:     ${BLUE}%s${RESET}\n" "$LFS"
-printf "MAKEFLAGS:       ${BLUE}%s${RESET}\n" "$MAKE_JOBS"
-
-printf "${MAGENTA}Preparing drive...${RESET}\n\n"
-printf "${RED}WARNING:${RESET} This will erase all data on %s\n" "$DRIVE"
-prompt_confirm "Proceed with disk wipe and partitioning?"
-
-printf "${MAGENTA}Releasing any existing mounts or swap on target drive...${RESET}\n"
-release_drive_usage
-
-erase_drive
-printf "${GREEN}Wipe successful!${RESET}\n"
-
-
-
-
-# Create EFI | SWAP | 'Remaining' Linux partition
-printf "\n${MAGENTA}Partitioning drive...${RESET}\n"
-printf "label:gpt\n" | sfdisk -q --wipe always "$DRIVE"
-printf "size=$EFI_SIZE,type=uefi\n size=$SWAP_SIZE,type=swap\n size=+,type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n" | sfdisk -q "$DRIVE"
-
-for _ in 1 2 3 4 5; do
-    [ -b "$EFI" ] && [ -b "$SWAP" ] && [ -b "$MAIN" ] && break
-    sleep 1
-done
-
-[ -b "$EFI" ]  || die "EFI partition was not created: $EFI"
-[ -b "$SWAP" ] || die "SWAP partition was not created: $SWAP"
-[ -b "$MAIN" ] || die "MAIN partition was not created: $MAIN"
-printf "${GREEN}Partitioning successful!${RESET}\n"
-
-
-
-
-# Create File Systems
-printf "\n${MAGENTA}Formatting partitions...${RESET}\n"
-mkfs.fat -F 32 -n EFI "$EFI" > /dev/null 2>&1
-mkswap -L SWAP "$SWAP" > /dev/null 2>&1
-mkfs.ext4 -F -L LFS "$MAIN"  > /dev/null 2>&1
-printf "${GREEN}Format successful!${RESET}\n"
-
-
-printf "\n${MAGENTA}Mounting partitions...${RESET}\n"
-# Mount Main Partition
-mkdir -p "$LFS"
-mount "$MAIN" "$LFS"
-
-# Mount EFI Partition
-mkdir -p "$LFS/boot"
-mount "$EFI" "$LFS/boot"
-
-# Mount SWAP Partition
-swapon "$SWAP"
-printf "${GREEN}Mount successful!${RESET}\n"
-
-
-
-
-# Fix permissions
-chown --quiet root:root "$LFS"
-chmod --quiet 755 "$LFS"
-
-
-# Create limited file directory
-printf "\n${MAGENTA}Creating limited file directory...${RESET}\n"
-mkdir -p "$LFS/sources"
-chmod --quiet a+wt "$LFS/sources"
-
-mkdir -p "$LFS/etc" "$LFS/logs" "$LFS/var" "$LFS/usr/bin" "$LFS/usr/sbin" "$LFS/usr/lib"
-
-for i in bin lib sbin; do
-  ln -sf "usr/$i" "$LFS/$i"
-done
-
-case $(uname -m) in
-  x86_64) mkdir -p "$LFS/lib64" ;;
-esac
-
-mkdir -p "$LFS/tools"
-printf "${GREEN}File creation successful!${RESET}\n"
-
-
-
-
-# Add the LFS user
-printf "\n${MAGENTA}Creating build user...${RESET}\n"
-if ! getent group lfs &>/dev/null; then
-    printf "Group lfs does not exist. Creating it now.\n"
-    groupadd lfs
-    if [ $? -eq 0 ]; then
-        printf "Group lfs created successfully.\n"
-    else
-        printf "Error creating group lfs. Check permissions.\n"
-    fi
-else
-    printf "Group lfs already exists.\n"
-fi
-
-if ! id lfs &>/dev/null; then
-    printf "User lfs does not exist. Creating account...\n"
-    useradd -s /bin/bash -g lfs -m -k /dev/null lfs
-    if [ $? -eq 0 ]; then
-        printf "User lfs created successfully.\n"
-        printf 'lfs:%s\n' "$LFS_PASS" | chpasswd
-    else
-        printf "Failed to create user lfs.\n"
-        exit 1
-    fi
-else
-    printf "User lfs already exists. No action taken.\n"
-fi
-printf "${GREEN}Build user creation successful!${RESET}\n"
-
-
-printf "\n${MAGENTA}Setting up the environment...${RESET}\n"
-
-chown --quiet -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"
-
-case $(uname -m) in
-  x86_64) chown --quiet lfs "$LFS/lib64" ;;
-esac
-
+# Grant lfs build user permissions
 grant_lfs_repo_access() {
     local repo_dir="$1"
     local dir
@@ -492,7 +156,132 @@ grant_lfs_repo_access() {
     setfacl -R -d -m u:lfs:rX "$repo_dir"
 }
 
+
+
+
+# Confirm installation configuration
+printf '\n%sInstallation configuration:%s\n' "$MAGENTA" "$RESET"
+printf 'Drive:           %s%s%s\n' "$BLUE" "$DRIVE" "$RESET"
+printf 'EFI partition:   %s%s%s\n' "$BLUE" "$EFI" "$RESET"
+printf 'SWAP partition:  %s%s%s\n' "$BLUE" "$SWAP" "$RESET"
+printf 'ROOT partition:  %s%s%s\n' "$BLUE" "$MAIN" "$RESET"
+printf 'EFI size:        %s%s%s\n' "$BLUE" "$EFI_SIZE" "$RESET"
+printf 'Swap size:       %s%s%s\n' "$BLUE" "$SWAP_SIZE" "$RESET"
+printf 'Mount point:     %s%s%s\n' "$BLUE" "$LFS" "$RESET"
+printf 'MAKE_JOBS:       %s%s%s\n' "$BLUE" "$MAKE_JOBS" "$RESET"
+
+
+# Execute disk preparation
+printf '%sPreparing drive...%s\n\n' "$MAGENTA" "$RESET"
+printf '%sWARNING:%s This will erase all data on %s\n' "$RED" "$RESET" "$DRIVE"
+prompt_confirm "Proceed with disk wipe and partitioning?"
+
+printf '%sReleasing target drive...%s\n' "$MAGENTA" "$RESET"
+if release_drive_usage; then
+    printf '%sTarget drive released successfully.%s\n' "$GREEN" "$RESET"
+else
+    printf '  - No active mounts or swap found on target drive\n'
+    printf '%sTarget drive already clear.%s\n' "$GREEN" "$RESET"
+fi
+
+printf '\n%sWiping target drive...%s\n' "$MAGENTA" "$RESET"
+erase_drive
+printf '%sWipe successful!%s\n' "$GREEN" "$RESET"
+
+
+# Create EFI | SWAP | 'Remaining' Linux partition
+printf '\n%sPartitioning drive...%s\n' "$MAGENTA" "$RESET"
+printf 'label:gpt\n' | sfdisk -q --force --wipe always "$DRIVE"
+printf "size=$EFI_SIZE,type=uefi\n size=$SWAP_SIZE,type=swap\n size=+,type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n" | sfdisk -q --force "$DRIVE"
+
+for _ in 1 2 3 4 5; do
+    [ -b "$EFI" ] && [ -b "$SWAP" ] && [ -b "$MAIN" ] && break
+    sleep 1
+done
+
+[ -b "$EFI" ]  || die "EFI partition was not created: $EFI"
+[ -b "$SWAP" ] || die "SWAP partition was not created: $SWAP"
+[ -b "$MAIN" ] || die "MAIN partition was not created: $MAIN"
+printf '%sPartitioning successful!%s\n' "$GREEN" "$RESET"
+
+
+# Create File Systems
+printf '\n%sFormatting partitions...%s\n' "$MAGENTA" "$RESET"
+mkfs.fat -F 32 -n EFI "$EFI" > /dev/null 2>&1
+mkswap -L SWAP "$SWAP" > /dev/null 2>&1
+mkfs.ext4 -F -L LFS "$MAIN"  > /dev/null 2>&1
+printf '%sFormat successful!%s\n' "$GREEN" "$RESET"
+
+printf '\n%sMounting partitions...%s\n' "$MAGENTA" "$RESET"
+
+
+# Mount Main Partition
+mkdir -p "$LFS"
+mount "$MAIN" "$LFS"
+
+
+# Mount EFI Partition
+mkdir -p "$LFS/boot"
+mount "$EFI" "$LFS/boot"
+
+
+# Mount SWAP Partition
+swapon "$SWAP"
+printf '%sMount successful!%s\n' "$GREEN" "$RESET"
+
+
+# Fix permissions
+chown --quiet root:root "$LFS"
+chmod --quiet 755 "$LFS"
+
+
+# Creating LFS directory structure
+printf '\n%sCreating LFS directory structure...%s\n' "$MAGENTA" "$RESET"
+mkdir -p "$LFS/sources"
+chmod --quiet a+wt "$LFS/sources"
+
+mkdir -p "$LFS/etc" "$LFS/logs" "$LFS/var" "$LFS/usr/bin" "$LFS/usr/sbin" "$LFS/usr/lib"
+
+for i in bin lib sbin; do
+  ln -sf "usr/$i" "$LFS/$i"
+done
+
+case $(uname -m) in
+  x86_64) mkdir -p "$LFS/lib64" ;;
+esac
+
+mkdir -p "$LFS/tools"
+printf '%sFile creation successful!%s\n' "$GREEN" "$RESET"
+
+
+# Add the LFS user
+printf '\n%sCreating build user...%s\n' "$MAGENTA" "$RESET"
+if ! getent group lfs >/dev/null 2>&1; then
+    printf '  - Creating group: lfs\n'
+    groupadd lfs
+else
+    printf '  - Using existing group: lfs\n'
+fi
+
+if ! id -u lfs >/dev/null 2>&1; then
+    printf '  - Creating user: lfs\n'
+    useradd -s /bin/bash -g lfs -m -k /dev/null lfs
+    printf 'lfs:%s\n' "$LFS_PASS" | chpasswd
+else
+    printf '  - Using existing user: lfs\n'
+fi
+printf '%sBuild user creation successful!%s\n' "$GREEN" "$RESET"
+
+printf '\n%sSetting up the environment...%s\n' "$MAGENTA" "$RESET"
+
+chown --quiet -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"
+
+case $(uname -m) in
+  x86_64) chown --quiet lfs "$LFS/lib64" ;;
+esac
+
 grant_lfs_repo_access "$base_dir"
+
 
 # Setup the environment
 cat > /home/lfs/.bash_profile << "EOF"
@@ -517,4 +306,4 @@ if [ -e /etc/bash.bashrc ] && [ ! -e /etc/bash.bashrc.NOUSE ]; then
     mv /etc/bash.bashrc /etc/bash.bashrc.NOUSE
 fi
 
-printf "${GREEN}Environment setup successful! System preparation complete.${RESET}\n"
+printf '%sEnvironment setup successful! System preparation complete.%s\n' "$GREEN" "$RESET"

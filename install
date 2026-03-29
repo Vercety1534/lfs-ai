@@ -3,13 +3,20 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+# Ensure Bash
+if [ -z "${BASH_VERSION:-}" ]; then
+    printf '\033[31mThis installer must be run with bash.\033[0m\n'
+    printf 'Use: bash %s [options]\n' "$0"
+    exit 1
+fi
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+set -euo pipefail
+
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
 OPTSTRING=":Acdfhl:pstv"
 called_with_args="false"
@@ -19,42 +26,53 @@ base_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$base_dir/settings.conf"
 
 
-# Ensure Bash
-if [ -z "${BASH_VERSION:-}" ]; then
-    printf "%b\n" "${RED}This installer must be run with bash.${RESET}"
-    printf "Use: bash %s [options]\n" "$0"
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
-fi
+}
 
 
+# Ensure root
+require_root() {
+    [ "$(id -u)" -eq 0 ] || die 'This installer must be run as root.'
+}
+
+
+# Grab version
+[ -f "$base_dir/VERSION" ] || die "Missing VERSION file at $base_dir/VERSION"
+VERSION="$(<"$base_dir/VERSION")"
+
+show_version() {
+    printf 'LFS-AI Installer v%s\n' "$VERSION"
+    exit 0
+}
 
 
 # Function to display usage information
 usage() {
     printf 'LFS-AI Installer v%s\n' "$VERSION"
-    printf "\n"
-    printf "LFS-AI is an automated installer for Linux From Scratch.\n"
-    printf "It can run the full install or individual stages.\n"
-    printf "If a stage fails, troubleshoot it and continue from that point.\n"
-    printf "\n"
-    printf "Usage: %s [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l 1|2|3|4|5|all] [-f] [--version]\n" "$0"
-    printf "    -A        :  ALL   :   Complete install including drive partitioning\n"
-    printf "    -v        :  DEPS  :   Verify dependencies on host system\n"
-    printf "    -h        :  Help  :   Display help message\n"
-    printf "\n"
-    printf "    -s        : Step 1 :   Edit settings.conf (${BLUE}IMPORTANT${RESET} - Failure to do so could destroy your system)\n"
-    printf "    -p        : Step 2 :   Prepare the host system and partition the drive\n"
-    printf "    -d        : Step 3 :   Download the required source packages\n"
-    printf "    -t        : Step 4 :   Install the toolchain\n"
-    printf "    -c        : Step 5 :   Prepare the chroot environment\n"
-    printf "    -l #      : Step 6 :   Install LFS [Phases - 1|2|3|4|5|all]\n"
-    printf "    -f        : Step 7 :   Install kernel, config files, and clean up build system\n"
-    printf "\n"
-    printf "    --version :        :   Display installer version\n"
-    printf "\n"
+    printf '\n'
+    printf 'LFS-AI is an automated installer for Linux From Scratch.\n'
+    printf 'It can run the full install or individual stages.\n'
+    printf 'If a stage fails, troubleshoot it and continue from that point.\n'
+    printf '\n'
+    printf 'Usage: %s [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l <arg>] [-f] [--version]\n' "$0"
+    printf '    -A        :  ALL   :   Complete install including drive partitioning\n'
+    printf '    -v        :  DEPS  :   Verify dependencies on host system\n'
+    printf '    -h        :  Help  :   Display help message\n'
+    printf '\n'
+    printf '    -s        : Step 1 :   Edit settings.conf (%sIMPORTANT%s - Failure to do so could destroy your system)\n' "$BLUE" "$RESET"
+    printf '    -p        : Step 2 :   Prepare the host system and partition the drive\n'
+    printf '    -d        : Step 3 :   Download the required source packages\n'
+    printf '    -t        : Step 4 :   Install the toolchain\n'
+    printf '    -c        : Step 5 :   Prepare the chroot environment\n'
+    printf '    -l <arg>  : Step 6 :   Install LFS phases [1|2|3|4|5|all]\n'
+    printf '    -f        : Step 7 :   Install kernel, config files, and clean up the build system\n'
+    printf '\n'
+    printf '    --version :        :   Display version information\n'
+    printf '\n'
 }
-
-
 
 
 # Function to prompt user to continue
@@ -65,8 +83,8 @@ prompt_confirm() {
         read -r -p "$prompt [y/N]: " REPLY
         case "$REPLY" in
             [yY]|[yY][eE][sS]) return 0 ;;
-            [nN]|[nN][oO]|"") die "Aborted by user." ;;
-            *) printf "${RED}ERROR:${RESET} invalid input\n" ;;
+            [nN]|[nN][oO]|"") die 'Aborted by user.' ;;
+            *) printf '%sERROR:%s invalid input\n' "$RED" "$RESET" ;;
         esac
     done
 }
@@ -79,39 +97,22 @@ prompt_remove() {
         case "$REPLY" in
             [yY]|[yY][eE][sS]) return 0 ;;
             [nN]|[nN][oO]|"") return 1 ;;
-            *) printf "${RED}ERROR:${RESET} invalid input\n" ;;
+            *) printf '%sERROR:%s invalid input\n' "$RED" "$RESET" ;;
         esac
     done
 }
-
-
 
 
 # Clear console
 maybe_clear() {
     [ "${NO_CLEAR:-0}" = "1" ] && return 0
     if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ]; then
-        command -v clear >/dev/null 2>&1 && clear || true
+        command -v clear >/dev/null 2>&1 && clear
     fi
 }
 
 
-
-
-# Ensure root
-require_root() {
-    [ "$(id -u)" -eq 0 ] || die "This installer must be run as root."
-}
-
-
-
-
 # Validate settings
-die() {
-    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
-    exit 1
-}
-
 validate_placeholder() {
     local name="$1"
     local value="$2"
@@ -257,7 +258,7 @@ validate_make_jobs() {
     local value="$1"
     local jobs
 
-    [ -n "$value" ] || die "MAKE_JOBS is empty."
+    [ -n "$value" ] || die 'MAKE_JOBS is empty.'
 
     case "$value" in
         -j[0-9]*)
@@ -280,30 +281,30 @@ validate_make_jobs() {
 validate_config() {
     validate_drive_name "$DRIVE"
 
-    validate_size "EFI_SIZE" "$EFI_SIZE"
-    validate_min_size "EFI_SIZE" "$EFI_SIZE" 512 "M"
+    validate_size 'EFI_SIZE' "$EFI_SIZE"
+    validate_min_size 'EFI_SIZE' "$EFI_SIZE" 512 "M"
 
-    validate_size "SWAP_SIZE" "$SWAP_SIZE"
-    validate_min_size "SWAP_SIZE" "$SWAP_SIZE" 1 "G"
-
-    validate_nonempty_path "LFS" "$LFS"
-
-    validate_password "LFS_PASS" "$LFS_PASS"
-    validate_password "ROOT_PASS" "$ROOT_PASS"
-
-    validate_make_jobs "$MAKE_JOBS"
-
-    [ "$LFS" != "/" ] || die "LFS cannot be /"
-    [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
-    [ "$LFS" != "/home" ] || die "LFS cannot be /home"
-    [ "$LFS" != "/mnt" ] || die "LFS cannot be /mnt"
-    [ "$LFS" != "/root" ] || die "LFS cannot be /root"
+    validate_size 'SWAP_SIZE' "$SWAP_SIZE"
+    validate_min_size 'SWAP_SIZE' "$SWAP_SIZE" 1 "G"
 
     derive_partitions
 
-    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
-    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
-    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
+    [ "$EFI" != "$SWAP" ] || die 'EFI and SWAP must not be the same partition.'
+    [ "$EFI" != "$MAIN" ] || die 'EFI and MAIN must not be the same partition.'
+    [ "$SWAP" != "$MAIN" ] || die 'SWAP and MAIN must not be the same partition.'
+
+    validate_nonempty_path 'LFS' "$LFS"
+
+    [ "$LFS" != '/' ] || die 'LFS cannot be /'
+    [ "$LFS" != '/boot' ] || die 'LFS cannot be /boot'
+    [ "$LFS" != '/home' ] || die 'LFS cannot be /home'
+    [ "$LFS" != '/mnt' ] || die 'LFS cannot be /mnt'
+    [ "$LFS" != '/root' ] || die 'LFS cannot be /root'
+
+    validate_password 'LFS_PASS' "$LFS_PASS"
+    validate_password 'ROOT_PASS' "$ROOT_PASS"
+
+    validate_make_jobs "$MAKE_JOBS"
 }
 
 load_config() {
@@ -312,10 +313,8 @@ load_config() {
     source "$CONFIG_FILE"
 
     validate_config
-    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
+    printf '\nConfiguration loaded from %s%s%s\n' "$BLUE" "$CONFIG_FILE" "$RESET"
 }
-
-
 
 
 # Validate mountpoints
@@ -324,7 +323,7 @@ ensure_mounted() {
     shift
 
     if mountpoint -q "$target"; then
-        printf "${GREEN}OK:${RESET}    %s is mounted.\n" "$target"
+        printf '%sOK:%s    %s is mounted.\n' "$GREEN" "$RESET" "$target"
     else
         "$@" || die "Failed to mount $target"
     fi
@@ -337,7 +336,7 @@ ensure_mount_source() {
 
     if mountpoint -q "$target"; then
         if findmnt -nr -o SOURCE --target "$target" | grep -qx "$source"; then
-            printf "${GREEN}OK:${RESET}    %s is mounted on %s.\n" "$source" "$target"
+            printf '%sOK:%s    %s is mounted on %s.\n' "$GREEN" "$RESET" "$source" "$target"
         else
             die "$target is already mounted, but not from $source"
         fi
@@ -350,21 +349,28 @@ ensure_swap() {
     [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
 
     if swapon --noheadings --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
-        printf "${GREEN}OK:${RESET}    %s swap is active.\n" "$SWAP"
+        printf '%sOK:%s    %s swap is active.\n' "$GREEN" "$RESET" "$SWAP"
     else
         swapon "$SWAP" || die "Failed to activate swap on $SWAP"
-        printf "${GREEN}OK:${RESET}    %s swap activated.\n" "$SWAP"
+        printf '%sOK:%s    %s swap activated.\n' "$GREEN" "$RESET" "$SWAP"
     fi
 }
 
-ensure_lfs_layout_and_mounts() {
+ensure_build_mounts() {
     [ -b "$EFI" ]  || die "EFI partition does not exist: $EFI"
     [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
     [ -b "$MAIN" ] || die "MAIN partition does not exist: $MAIN"
 
+    [ -d "$LFS" ] || die "Missing mountpoint: $LFS"
     ensure_mount_source "$MAIN" "$LFS"      mount "$MAIN" "$LFS"
+
+    [ -d "$LFS/boot" ] || die "Missing mountpoint: $LFS/boot"
     ensure_mount_source "$EFI"  "$LFS/boot" mount "$EFI" "$LFS/boot"
+
     ensure_swap
+}
+
+ensure_chroot_mounts() {
     ensure_mounted "$LFS/dev"     mount --bind /dev "$LFS/dev"
     ensure_mounted "$LFS/dev/pts" mount -t devpts -o gid=5,mode=0620 devpts "$LFS/dev/pts"
     ensure_mounted "$LFS/proc"    mount -t proc proc "$LFS/proc"
@@ -372,39 +378,85 @@ ensure_lfs_layout_and_mounts() {
     ensure_mounted "$LFS/run"     mount -t tmpfs tmpfs "$LFS/run"
 
     if mountpoint -q "$LFS/dev/shm"; then
-        printf "${GREEN}OK:${RESET}    %s is mounted.\n" "$LFS/dev/shm"
+        printf '%sOK:%s    %s is mounted.\n' "$GREEN" "$RESET" "$LFS/dev/shm"
     else
         if [ -h "$LFS/dev/shm" ]; then
-            install -d -m 1777 "$LFS$(realpath /dev/shm)" || die "Failed to create shared memory directory"
+            install -d -m 1777 "$LFS$(realpath /dev/shm)" || die 'Failed to create shared memory directory'
         else
             mount -t tmpfs -o nosuid,nodev tmpfs "$LFS/dev/shm" || die "Failed to mount $LFS/dev/shm"
         fi
     fi
 }
 
-
-
-
-# Phase wrapper
-run_lfs_phase() {
-    local phase="$1"
-
-    chroot "$LFS" /usr/bin/env -i              \
-        HOME=/root                             \
-        TERM="$TERM"                           \
-        PS1='(lfs chroot) \u:\w\$ '            \
-        PATH=/usr/bin:/usr/sbin:/bin:/sbin     \
-        MAKEFLAGS="$MAKE_JOBS"                 \
-        TESTSUITEFLAGS="$MAKE_JOBS"            \
-        ADD_CFLAGS="${ADD_CFLAGS:-}"           \
-        CFLAGS="${CFLAGS} ${ADD_CFLAGS:-}"     \
-        CXXFLAGS="${CXXFLAGS} ${ADD_CFLAGS:-}" \
-        CPPFLAGS="${CPPFLAGS} ${ADD_CFLAGS:-}" \
-        ROOT_PASS="${ROOT_PASS:-}"             \
-        /bin/bash "/lfs-ai/scripts/lfs-phase$phase"
+ensure_lfs_layout_and_mounts() {
+    ensure_build_mounts
+    ensure_chroot_mounts
 }
 
 
+# Phase wrapper
+run_in_lfs_chroot() {
+    chroot "$LFS" /usr/bin/env -i \
+        HOME=/root \
+        TERM="${TERM:-xterm}" \
+        PS1='(lfs chroot) \u:\w\$ ' \
+        PATH=/usr/bin:/usr/sbin:/bin:/sbin \
+        MAKEFLAGS="$MAKE_JOBS" \
+        TESTSUITEFLAGS="$MAKE_JOBS" \
+        ADD_CFLAGS="${ADD_CFLAGS:-}" \
+        CFLAGS="${CFLAGS:-} ${ADD_CFLAGS:-}" \
+        CXXFLAGS="${CXXFLAGS:-} ${ADD_CFLAGS:-}" \
+        CPPFLAGS="${CPPFLAGS:-} ${ADD_CFLAGS:-}" \
+        "$@"
+}
+
+require_lfs_chroot_env() {
+    [ -e "$LFS/usr/bin/env" ] || [ -L "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
+}
+
+run_named_phase() {
+    local phase="$1"
+    printf '%sRunning phase %s.%s\n\n' "$MAGENTA" "$phase" "$RESET"
+    [ -f "$LFS/lfs-ai/scripts/lfs-phase$phase" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase$phase"
+    run_in_lfs_chroot ROOT_PASS="${ROOT_PASS:-}" /bin/bash /lfs-ai/scripts/lfs-phase"$phase"
+}
+
+graft_install_phase_pkg() {
+    local phase="$1"
+    local pkg="$2"
+    local ver="$3"
+    local LOG_FILE="$LFS/logs/lfs"
+    local GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
+
+    [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
+
+    printf '%sInstalling %s...%s\n' "$MAGENTA" "$pkg" "$RESET"
+    "$GRAFT_BIN" -r "$LFS" -pDV "$pkg/$ver" >> "$LOG_FILE/phase$phase/$pkg-$ver.log" 2>&1
+    "$GRAFT_BIN" -r "$LFS" -iV "$pkg/$ver" >> "$LOG_FILE/phase$phase/$pkg-$ver.log" 2>&1
+    printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
+}
+
+run_all_lfs_phases() {
+    require_lfs_chroot_env
+
+    run_named_phase 1
+    graft_install_phase_pkg 1 glibc 2.43
+
+    run_named_phase 2
+    graft_install_phase_pkg 2 ncurses 6.6
+
+    run_named_phase 3
+    graft_install_phase_pkg 3 perl 5.42.1
+
+    run_named_phase 4
+    run_named_phase 5
+}
+
+run_final_stage() {
+    [ -f "$LFS/lfs-ai/scripts/final" ] || die "Missing $LFS/lfs-ai/scripts/final"
+    require_lfs_chroot_env
+    run_in_lfs_chroot DRIVE="$DRIVE" EFI="$EFI" SWAP="$SWAP" MAIN="$MAIN" /bin/bash /lfs-ai/scripts/final
+}
 
 
 # Clean up ACLs
@@ -426,17 +478,75 @@ cleanup_lfs_repo_access() {
 }
 
 
+# Final Cleanup
+post_final_cleanup() {
+    if prompt_remove 'Do you want to remove log files?'; then
+        printf '%sRemoving logs...%s\n' "$GREEN" "$RESET"
+        rm -rf "$LFS/logs"
+    else
+        printf '%sSkipping log removal.%s\n' "$GREEN" "$RESET"
+    fi
+
+    if prompt_remove 'Do you want to remove script files?'; then
+        printf '%sRemoving scripts...%s\n' "$GREEN" "$RESET"
+        rm -rf "$LFS/lfs-ai"
+    else
+        printf '%sSkipping script removal.%s\n' "$GREEN" "$RESET"
+    fi
+
+    if prompt_remove 'Do you want to remove source files?'; then
+        printf '%sRemoving sources...%s\n' "$GREEN" "$RESET"
+        rm -rf "$LFS/sources"
+    else
+        printf '%sSkipping source removal.%s\n' "$GREEN" "$RESET"
+    fi
+
+    if id lfs >/dev/null 2>&1; then
+        if prompt_remove 'Do you want to remove the lfs build user and home directory?'; then
+            userdel -r lfs || die 'Failed to remove lfs user'
+            printf '%sRemoved lfs user.%s\n' "$GREEN" "$RESET"
+        else
+            printf '%sSkipping lfs user removal.%s\n' "$GREEN" "$RESET"
+        fi
+    fi
+
+    if prompt_remove 'Do you want to remove ACL entries created for the lfs user?'; then
+        cleanup_lfs_repo_access "$base_dir"
+        printf '%sRemoved ACL entries for lfs.%s\n' "$GREEN" "$RESET"
+    else
+        printf '%sSkipping ACL cleanup.%s\n' "$GREEN" "$RESET"
+    fi
+
+    [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
+}
+
+unmount_if_mounted() {
+    local target="$1"
+
+    if mountpoint -q "$target"; then
+        umount "$target" 2>/dev/null || umount -l "$target" || die "Failed to unmount $target"
+    fi
+}
+
+final_unmount_cleanup() {
+    printf '%sUnmounting...%s\n' "$MAGENTA" "$RESET"
+
+    unmount_if_mounted "$LFS/dev/shm"
+    unmount_if_mounted "$LFS/dev/pts"
+    unmount_if_mounted "$LFS/run"
+    unmount_if_mounted "$LFS/proc"
+    unmount_if_mounted "$LFS/sys"
+    unmount_if_mounted "$LFS/dev"
+    unmount_if_mounted "$LFS/boot"
+    unmount_if_mounted "$LFS"
+
+    if swapon --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
+        swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
+    fi
+}
 
 
 # Show installer version
-[ -f "$base_dir/VERSION" ] || die "Missing VERSION file at $base_dir/VERSION"
-VERSION="$(<"$base_dir/VERSION")"
-
-show_version() {
-    printf 'LFS-AI Installer v%s\n' "$VERSION"
-    exit 0
-}
-
 if [ "${1:-}" = "--version" ]; then
     show_version
 fi
@@ -448,576 +558,370 @@ fi
 while getopts "$OPTSTRING" opt; do
   case "$opt" in
 
-    A)
-      # Run all scripts
-      called_with_args="true"
-      require_root
-      maybe_clear
-
-      printf "${MAGENTA}Performing a partition & complete install.${RESET}\n\n"
-
-      printf "This could be a dangerous operation!\n"
-      printf "Ensure ${BLUE}settings.conf${RESET} is updated appropriately when asked.\n\n"
-
-      if prompt_confirm "Are you ready to continue?"; then
-
-        # Check dependencies
-        printf "${MAGENTA}Checking dependencies on the host system.${RESET}\n\n"
-        "$base_dir/scripts/verify"
-        printf "${GREEN}Verified dependencies${RESET}\n"
-
-        # Change settings
+    A)  # Run full install
+        called_with_args="true"
+        require_root
         maybe_clear
-        printf "${MAGENTA}Preparing to configure settings.${RESET}\n\n"
-        printf "Copy the desired drive name from below to input into ${BLUE}settings.conf${RESET}.\n"
-        printf "Example ${BLUE}nvme1n1${RESET} or ${BLUE}sda${RESET}\n\n"
+
+        printf '%sPerforming a partition & complete install.%s\n\n' "$MAGENTA" "$RESET"
+
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure %ssettings.conf%s is updated appropriately when asked.\n\n' "$BLUE" "$RESET"
+
+        if prompt_confirm 'Are you ready to continue?'; then
+
+            # Check dependencies
+            printf '%sChecking dependencies on the host system.%s\n\n' "$MAGENTA" "$RESET"
+            "$base_dir/scripts/verify"
+            printf '%sVerified dependencies%s\n' "$GREEN" "$RESET"
+
+            # Change settings
+            maybe_clear
+            printf '%sPreparing to configure settings.%s\n\n' "$MAGENTA" "$RESET"
+            printf 'Copy the desired drive name from below to input into %ssettings.conf%s.\n' "$BLUE" "$RESET"
+            printf 'Example %snvme1n1%s or %ssda%s\n\n' "$BLUE" "$RESET" "$BLUE" "$RESET"
+            lsblk
+            if prompt_confirm 'Are you ready to continue?'; then
+                DEFAULTEDITOR="$(command -v nano >/dev/null 2>&1 && printf 'nano' || printf 'vi')"
+                "${EDITOR:-$DEFAULTEDITOR}" "$CONFIG_FILE"
+                printf '%sUpdated settings.%s\n' "$GREEN" "$RESET"
+
+                load_config
+
+                printf '\n%sInstallation configuration:%s\n' "$MAGENTA" "$RESET"
+                printf 'Drive:           %s%s%s\n' "$BLUE" "$DRIVE" "$RESET"
+                printf 'EFI partition:   %s%s%s\n' "$BLUE" "$EFI" "$RESET"
+                printf 'SWAP partition:  %s%s%s\n' "$BLUE" "$SWAP" "$RESET"
+                printf 'ROOT partition:  %s%s%s\n' "$BLUE" "$MAIN" "$RESET"
+                printf 'EFI size:        %s%s%s\n' "$BLUE" "$EFI_SIZE" "$RESET"
+                printf 'Swap size:       %s%s%s\n' "$BLUE" "$SWAP_SIZE" "$RESET"
+                printf 'Mount point:     %s%s%s\n' "$BLUE" "$LFS" "$RESET"
+                printf 'MAKE_JOBS:       %s%s%s\n' "$BLUE" "$MAKE_JOBS" "$RESET"
+                printf 'Compiler Flags:  %s%s%s\n\n' "$BLUE" "${ADD_CFLAGS:-}" "$RESET"
+
+                prompt_confirm 'Continue with these settings?'
+            else
+                exit 1
+            fi
+
+            # Prepare host & drives
+            maybe_clear
+            printf '%sPreparing the host system and drives.%s\n\n' "$MAGENTA" "$RESET"
+            printf 'This could be a dangerous operation!\n'
+            printf 'Ensure %ssettings.conf%s was updated appropriately.\n\n' "$BLUE" "$RESET"
+            if prompt_confirm 'Are you ready to continue?'; then
+                export DRIVE EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS
+                "$base_dir/scripts/prepare"
+                ensure_build_mounts
+            else
+                exit 1
+            fi
+
+            # Download packages
+            printf '%sDownloading packages.%s\n' "$MAGENTA" "$RESET"
+            export MAIN
+            "$base_dir/scripts/download"
+
+            # Install the toolchain
+            printf '%sInstalling the toolchain.%s\n\n' "$MAGENTA" "$RESET"
+            export LFS
+            "$base_dir/scripts/toolchain"
+
+            # Setup chroot
+            printf '%sPreparing the chroot environment.%s\n\n' "$MAGENTA" "$RESET"
+            export LFS MAKE_JOBS
+            "$base_dir/scripts/chroot"
+
+            # Install LFS
+            printf '%sInstalling Linux from Scratch.%s\n\n' "$MAGENTA" "$RESET"
+
+            printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
+            ensure_chroot_mounts
+            printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
+
+            export ROOT_PASS
+            run_all_lfs_phases
+
+            # Final setup
+            printf '%sInstalling kernel and cleaning up build system.%s\n\n' "$MAGENTA" "$RESET"
+
+            run_final_stage
+
+            post_final_cleanup
+
+            final_unmount_cleanup
+
+            printf '\n\n%sSuccess, Linux from Scratch is installed!%s\n\n' "$GREEN" "$RESET"
+
+        else
+            exit 1 # Exit with an error code
+        fi
+    ;;
+
+
+    v)  # Check dependencies
+        called_with_args="true"
+        maybe_clear
+        printf '%sChecking dependencies on the host system.%s\n\n' "$MAGENTA" "$RESET"
+        "$base_dir/scripts/verify"
+    ;;
+
+
+    h)  # Display help
+        called_with_args="true"
+        maybe_clear
+        usage
+    ;;
+
+
+    s)  # Change settings
+        called_with_args="true"
+        maybe_clear
+
+        printf '%sPreparing to configure settings.%s\n\n' "$MAGENTA" "$RESET"
+        printf 'Copy the desired drive name from below to input into %ssettings.conf%s.\n' "$BLUE" "$RESET"
+        printf 'Example %snvme1n1%s or %ssda%s\n\n' "$BLUE" "$RESET" "$BLUE" "$RESET"
+
         lsblk
-        if prompt_confirm "Are you ready to continue?"; then
-            called_with_args="true"
+
+        if prompt_confirm 'Are you ready to continue?'; then
             DEFAULTEDITOR="$(command -v nano >/dev/null 2>&1 && printf 'nano' || printf 'vi')"
             "${EDITOR:-$DEFAULTEDITOR}" "$CONFIG_FILE"
-            printf "${GREEN}Updated Settings${RESET}\n"
 
             load_config
 
-            printf "\n${MAGENTA}Installation configuration:${RESET}\n"
-            printf "Drive:           ${BLUE}%s${RESET}\n" "$DRIVE"
-            printf "EFI partition:   ${BLUE}%s${RESET}\n" "$EFI"
-            printf "SWAP partition:  ${BLUE}%s${RESET}\n" "$SWAP"
-            printf "ROOT partition:  ${BLUE}%s${RESET}\n" "$MAIN"
-            printf "EFI size:        ${BLUE}%s${RESET}\n" "$EFI_SIZE"
-            printf "Swap size:       ${BLUE}%s${RESET}\n" "$SWAP_SIZE"
-            printf "Mount point:     ${BLUE}%s${RESET}\n" "$LFS"
-            printf "MAKEFLAGS:       ${BLUE}%s${RESET}\n" "$MAKE_JOBS"
-            printf "Compiler Flags:  ${BLUE}%s${RESET}\n\n" "$ADD_CFLAGS"
+            printf '\n%sInstallation configuration:%s\n' "$MAGENTA" "$RESET"
+            printf 'Drive:           %s%s%s\n' "$BLUE" "$DRIVE" "$RESET"
+            printf 'EFI partition:   %s%s%s\n' "$BLUE" "$EFI" "$RESET"
+            printf 'SWAP partition:  %s%s%s\n' "$BLUE" "$SWAP" "$RESET"
+            printf 'ROOT partition:  %s%s%s\n' "$BLUE" "$MAIN" "$RESET"
+            printf 'EFI size:        %s%s%s\n' "$BLUE" "$EFI_SIZE" "$RESET"
+            printf 'Swap size:       %s%s%s\n' "$BLUE" "$SWAP_SIZE" "$RESET"
+            printf 'Mount point:     %s%s%s\n' "$BLUE" "$LFS" "$RESET"
+            printf 'MAKE_JOBS:       %s%s%s\n' "$BLUE" "$MAKE_JOBS" "$RESET"
+            printf 'Compiler Flags:  %s%s%s\n\n' "$BLUE" "${ADD_CFLAGS:-}" "$RESET"
 
-            prompt_confirm "Continue with these settings?"
+            printf '%sUpdated settings.%s\n' "$GREEN" "$RESET"
         else
             exit 1
         fi
+    ;;
 
-        # Prepare host & drives
+
+    p)  # Prepare host & drives
+        called_with_args="true"
+        require_root
         maybe_clear
-        printf "${MAGENTA}Preparing the host system and drives.${RESET}\n\n"
-        printf    "This could be a dangerous operation!\n"
-        printf "Ensure ${BLUE}settings.conf${RESET} was updated appropriately.\n\n"
-        if prompt_confirm "Are you ready to continue?"; then
+        printf '%sPreparing the host system and drives.%s\n\n' "$MAGENTA" "$RESET"
+
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure %ssettings.conf%s was updated appropriately.\n\n' "$BLUE" "$RESET"
+
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
+
+        if prompt_confirm 'Are you ready to continue?'; then
+            printf '%sStarting install.%s\n' "$GREEN" "$RESET"
+            load_config
+            export DRIVE EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS
             "$base_dir/scripts/prepare"
         else
             exit 1
         fi
+    ;;
 
-        # Download packages
-        "$base_dir/scripts/download"
 
-        # Install the toolchain
-        printf "${MAGENTA}Installing the toolchain.${RESET}\n"
-        "$base_dir/scripts/toolchain"
+    d)  # Download packages
+        called_with_args="true"
+        require_root
+        maybe_clear
+        printf '%sDownloading packages.%s\n' "$MAGENTA" "$RESET"
 
-        # Setup chroot
-        printf "${MAGENTA}Preparing the chroot environment.${RESET}\n"
-        "$base_dir/scripts/chroot"
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
 
-        # Install LFS
-        printf "${MAGENTA}Installing Linux from Scratch.${RESET}\n\n"
-
-        # Verify mounts
-        printf "${MAGENTA}Verify mounts...${RESET}\n"
-        ensure_lfs_layout_and_mounts
-        printf "${GREEN}Verification successful!${RESET}\n\n"
-        "$base_dir/scripts/lfs"
-
-        # Final setup
-        printf "${MAGENTA}Installing kernel and cleaning up build system.${RESET}\n"
-        [ -f "$LFS/lfs-ai/scripts/final" ] || die "Missing $LFS/lfs-ai/scripts/final"
-        chroot "$LFS" /usr/bin/env -i              \
-            HOME=/root                             \
-            TERM="$TERM"                           \
-            PS1='(lfs chroot) \u:\w\$ '            \
-            PATH=/usr/bin:/usr/sbin:/bin:/sbin     \
-            MAKEFLAGS="$MAKE_JOBS"                 \
-            TESTSUITEFLAGS="$MAKE_JOBS"            \
-            ADD_CFLAGS="${ADD_CFLAGS:-}"           \
-            CFLAGS="${CFLAGS} ${ADD_CFLAGS:-}"     \
-            CXXFLAGS="${CXXFLAGS} ${ADD_CFLAGS:-}" \
-            CPPFLAGS="${CPPFLAGS} ${ADD_CFLAGS:-}" \
-            DRIVE="$DRIVE"                         \
-            EFI="$EFI"                             \
-            SWAP="$SWAP"                           \
-            MAIN="$MAIN"                           \
-            /bin/bash /lfs-ai/scripts/final
-
-        if prompt_remove "Do you want to remove log files?"; then
-            printf "${GREEN}Removing logs...${RESET}\n"
-            rm -rf "$LFS/logs"
+        if prompt_confirm 'Are you ready to continue?'; then
+            load_config
+            ensure_build_mounts
+            export LFS
+            "$base_dir/scripts/download"
         else
-            printf "${GREEN}Skipping log removal.${RESET}\n"
+            exit 1
         fi
-
-        if prompt_remove "Do you want to remove script files?"; then
-            printf "${GREEN}Removing scripts...${RESET}\n"
-            rm -rf "$LFS/lfs-ai"
-        else
-            printf "${GREEN}Skipping script removal.${RESET}\n"
-        fi
-
-        if prompt_remove "Do you want to remove source files?"; then
-            printf "${GREEN}Removing sources...${RESET}\n"
-            rm -rf "$LFS/sources"
-        else
-            printf "${GREEN}Skipping source removal.${RESET}\n"
-        fi
-
-        if id lfs >/dev/null 2>&1; then
-            if prompt_remove "Do you want to remove the lfs user and home directory?"; then
-                userdel -r lfs || die "Failed to remove lfs user"
-                printf "${GREEN}Removed lfs user.${RESET}\n"
-            else
-                printf "${GREEN}Skipping lfs user removal.${RESET}\n"
-            fi
-        fi
-
-        if prompt_remove "Do you want to remove ACL entries created for the lfs user?"; then
-            cleanup_lfs_repo_access "$base_dir"
-            printf "${GREEN}Removed ACL entries for lfs.${RESET}\n"
-        else
-            printf "${GREEN}Skipping ACL cleanup.${RESET}\n"
-        fi
-
-        [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
-
-        printf "${MAGENTA}Unmounting...${RESET}\n"
-
-        unmount_if_mounted() {
-            local target="$1"
-
-            if mountpoint -q "$target"; then
-                umount "$target" 2>/dev/null || umount -l "$target" || die "Failed to unmount $target"
-            fi
-        }
-
-        unmount_if_mounted "$LFS/dev/shm"
-        unmount_if_mounted "$LFS/dev/pts"
-        unmount_if_mounted "$LFS/run"
-        unmount_if_mounted "$LFS/proc"
-        unmount_if_mounted "$LFS/sys"
-        unmount_if_mounted "$LFS/dev"
-        unmount_if_mounted "$LFS/boot"
-        unmount_if_mounted "$LFS"
-
-        if swapon --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
-            swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
-        fi
-
-        printf "\n\n${GREEN}Success, Linux from Scratch is installed!${RESET}\n\n"
-
-      else
-        exit 1 # Exit with an error code
-      fi
-
     ;;
-
-
-
-
-    v)
-      # Check dependencies
-      called_with_args="true"
-      maybe_clear
-      printf "${MAGENTA}Checking dependencies on the host system.${RESET}\n\n"
-      "$base_dir/scripts/verify"
-
-    ;;
-
-
-
-
-    h)
-      # Display help
-      called_with_args="true"
-      usage
-      exit 0
-    ;;
-
-
-
-
-    s)
-      # Change settings
-      called_with_args="true"
-      maybe_clear
-      printf "${MAGENTA}Preparing to configure settings.${RESET}\n\n"
-      printf "Copy the desired drive name from below to input into ${BLUE}settings.conf${RESET}.\n"
-      printf "Example ${BLUE}nvme1n1${RESET} or ${BLUE}sda${RESET}\n\n"
-
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-
-      lsblk
-
-      if prompt_confirm "Are you ready to continue?"; then
-        DEFAULTEDITOR="$(command -v nano >/dev/null 2>&1 && printf 'nano' || printf 'vi')"
-        "${EDITOR:-$DEFAULTEDITOR}" "$CONFIG_FILE"
-
-        load_config
-
-        printf "\n${MAGENTA}Installation configuration:${RESET}\n"
-        printf "Drive:           ${BLUE}%s${RESET}\n" "$DRIVE"
-        printf "EFI partition:   ${BLUE}%s${RESET}\n" "$EFI"
-        printf "SWAP partition:  ${BLUE}%s${RESET}\n" "$SWAP"
-        printf "ROOT partition:  ${BLUE}%s${RESET}\n" "$MAIN"
-        printf "EFI size:        ${BLUE}%s${RESET}\n" "$EFI_SIZE"
-        printf "Swap size:       ${BLUE}%s${RESET}\n" "$SWAP_SIZE"
-        printf "Mount point:     ${BLUE}%s${RESET}\n" "$LFS"
-        printf "MAKEFLAGS:       ${BLUE}%s${RESET}\n" "$MAKE_JOBS"
-        printf "Compiler Flags:  ${BLUE}%s${RESET}\n\n" "$ADD_CFLAGS"
-
-        printf "${GREEN}Updated Settings${RESET}\n"
-      else
-        exit 1
-      fi
-    ;;
-
-
-
-
-    p)
-      # Prepare host & drives
-      called_with_args="true"
-      require_root
-      maybe_clear
-      printf "${MAGENTA}Preparing the host system and drives.${RESET}\n\n"
-
-      printf "This could be a dangerous operation!\n"
-      printf "Ensure ${BLUE}settings.conf${RESET} was updated appropriately.\n\n"
-
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-
-      if prompt_confirm "Are you ready to continue?"; then
-        printf "${GREEN}Starting Install${RESET}\n"
-        "$base_dir/scripts/prepare"
-      else
-        exit 1
-      fi
-
-    ;;
-
-
-
-
-    d)
-      # Download packages
-      called_with_args="true"
-      require_root
-      maybe_clear
-      printf "${MAGENTA}Downloading packages.${RESET}\n"
-
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-
-      if prompt_confirm "Are you ready to continue?"; then
-        "$base_dir/scripts/download"
-      else
-        exit 1
-      fi
-
-    ;;
-
-
 
 
     t)
-      # Install the toolchain
-      called_with_args="true"
-      require_root
-      maybe_clear
-      printf "${MAGENTA}Installing the toolchain.${RESET}\n\n"
+        called_with_args="true"
+        require_root
+        maybe_clear
+        printf '%sInstalling the toolchain.%s\n\n' "$MAGENTA" "$RESET"
 
-      printf "This could be a dangerous operation!\n"
-      printf "Ensure ${BLUE}Steps 1-3${RESET} were previously complete.\n\n"
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure Steps 1-3 were previously complete.\n\n'
 
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
 
-      if prompt_confirm "Are you ready to continue?"; then
-        printf "${GREEN}Starting Install${RESET}\n"
-        "$base_dir/scripts/toolchain"
-      else
-        exit 1
-      fi
-
-    ;;
-
-
-
-
-    c)
-      # Setup chroot
-      called_with_args="true"
-      require_root
-      maybe_clear
-      printf "${MAGENTA}Preparing the chroot environment.${RESET}\n\n"
-
-      printf "This could be a dangerous operation!\n"
-      printf "Ensure ${BLUE}Steps 1-4${RESET} were previously complete.\n\n"
-
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-
-      if prompt_confirm "Are you ready to continue?"; then
-        printf "${GREEN}Starting Install${RESET}\n"
-        "$base_dir/scripts/chroot"
-      else
-        exit 1
-      fi
-
-    ;;
-
-
-
-
-    l)
-      # Install LFS
-      called_with_args="true"
-      require_root
-      PHASE="$OPTARG"
-      maybe_clear
-      printf "${MAGENTA}Installing Linux from Scratch.${RESET}\n\n"
-
-      printf "This could be a dangerous operation!\n"
-      printf "Ensure ${BLUE}Steps 1-5${RESET} were previously complete.\n\n"
-
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-
-
-      if prompt_confirm "Are you ready to continue?"; then
-        printf "${GREEN}Starting Install${RESET}\n\n"
-
-        load_config
-
-        LOG_FILE="$LFS/logs/lfs"
-
-        printf "${MAGENTA}Verify mounts...${RESET}\n"
-        ensure_lfs_layout_and_mounts
-        printf "${GREEN}Verification successful!${RESET}\n\n"
-
-        GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
-        [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
-        [ -e "$LFS/usr/bin/env" ] || [ -L "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
-
-        case "$PHASE" in
-
-          1)
-            printf "${MAGENTA}Running phase %s.${RESET}\n\n" "$PHASE"
-            [ -f "$LFS/lfs-ai/scripts/lfs-phase1" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase1"
-
-            run_lfs_phase 1
-
-            printf "${MAGENTA}Installing glibc...${RESET}\n"
-            "$GRAFT_BIN" -r "$LFS" -pDV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
-            "$GRAFT_BIN" -r "$LFS" -iV glibc/2.43 >> "$LOG_FILE/phase1/glibc-2.43.log" 2>&1
-            printf "${GREEN}Install successful!${RESET}\n"
-          ;;
-
-          2)
-            printf "${MAGENTA}Running phase %s.${RESET}\n\n" "$PHASE"
-            [ -f "$LFS/lfs-ai/scripts/lfs-phase2" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase2"
-
-            run_lfs_phase 2
-
-            printf "${MAGENTA}Installing ncurses...${RESET}\n"
-            "$GRAFT_BIN" -r "$LFS" -pDV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
-            "$GRAFT_BIN" -r "$LFS" -iV ncurses/6.6 >> "$LOG_FILE/phase2/ncurses-6.6.log" 2>&1
-            printf "${GREEN}Install successful!${RESET}\n"
-          ;;
-
-          3)
-            printf "${MAGENTA}Running phase %s.${RESET}\n\n" "$PHASE"
-            [ -f "$LFS/lfs-ai/scripts/lfs-phase3" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase3"
-
-            run_lfs_phase 3
-
-            printf "${MAGENTA}Installing perl...${RESET}\n"
-            "$GRAFT_BIN" -r "$LFS" -pDV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
-            "$GRAFT_BIN" -r "$LFS" -iV perl/5.42.1 >> "$LOG_FILE/phase3/perl-5.42.1.log" 2>&1
-            printf "${GREEN}Install successful!${RESET}\n"
-          ;;
-
-          4)
-            printf "${MAGENTA}Running phase %s.${RESET}\n\n" "$PHASE"
-            [ -f "$LFS/lfs-ai/scripts/lfs-phase4" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase4"
-
-            run_lfs_phase 4
-          ;;
-
-          5)
-            printf "${MAGENTA}Running phase %s.${RESET}\n\n" "$PHASE"
-            [ -f "$LFS/lfs-ai/scripts/lfs-phase5" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase5"
-
-            run_lfs_phase 5
-          ;;
-
-          all)
-            printf "${MAGENTA}Running %s phases.${RESET}\n\n" "$PHASE"
-            "$base_dir/scripts/lfs"
-          ;;
-
-          *)
-            printf "ERROR: No valid argument provided. See below before proceeding.\n\n"
-            usage
+        if prompt_confirm 'Are you ready to continue?'; then
+            printf '%sStarting install.%s\n' "$GREEN" "$RESET"
+            load_config
+            ensure_build_mounts
+            export LFS
+            "$base_dir/scripts/toolchain"
+        else
             exit 1
-          ;;
+        fi
+    ;;
 
-        esac
-      else
+
+    c)  # Setup chroot
+        called_with_args="true"
+        require_root
+        maybe_clear
+        printf '%sPreparing the chroot environment.%s\n\n' "$MAGENTA" "$RESET"
+
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure %sSteps 1-4%s were previously complete.\n\n' "$BLUE" "$RESET"
+
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
+
+        if prompt_confirm 'Are you ready to continue?'; then
+            printf '%sStarting install.%s\n' "$GREEN" "$RESET"
+            load_config
+            ensure_build_mounts
+            export LFS MAKE_JOBS
+            "$base_dir/scripts/chroot"
+        else
+            exit 1
+        fi
+    ;;
+
+
+    l)  # Install LFS
+        called_with_args="true"
+        require_root
+        PHASE="$OPTARG"
+        maybe_clear
+        printf '%sInstalling Linux from Scratch.%s\n\n' "$MAGENTA" "$RESET"
+
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure %sSteps 1-5%s were previously complete.\n\n' "$BLUE" "$RESET"
+
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
+
+
+        if prompt_confirm 'Are you ready to continue?'; then
+            printf '%sStarting install.%s\n\n' "$GREEN" "$RESET"
+
+            load_config
+            export ROOT_PASS
+
+            printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
+            ensure_lfs_layout_and_mounts
+            printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
+
+            require_lfs_chroot_env
+
+            case "$PHASE" in
+            1)
+                run_named_phase 1
+                graft_install_phase_pkg 1 glibc 2.43
+            ;;
+
+            2)
+                run_named_phase 2
+                graft_install_phase_pkg 2 ncurses 6.6
+            ;;
+
+            3)
+                run_named_phase 3
+                graft_install_phase_pkg 3 perl 5.42.1
+            ;;
+
+            4)
+                run_named_phase 4
+            ;;
+
+            5)
+                run_named_phase 5
+            ;;
+
+            all)
+                printf '%sRunning all phases.%s\n\n' "$MAGENTA" "$RESET"
+                run_all_lfs_phases
+            ;;
+
+            *)
+                printf '%sERROR:%s No valid argument provided. See below before proceeding.\n\n' "$RED" "$RESET"
+                usage
+                exit 1
+            ;;
+
+            esac
+        else
+            exit 1
+        fi
+    ;;
+
+
+    f)  # Final setup
+        called_with_args="true"
+        require_root
+        maybe_clear
+        printf '%sInstalling kernel and cleaning up build system.%s\n\n' "$MAGENTA" "$RESET"
+
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure %sSteps 1-6%s were previously complete.\n\n' "$BLUE" "$RESET"
+
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
+
+        if prompt_confirm 'Are you ready to continue?'; then
+            printf '%sStarting install.%s\n\n' "$GREEN" "$RESET"
+
+            load_config
+
+            printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
+            ensure_lfs_layout_and_mounts
+            printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
+
+            run_final_stage
+
+            post_final_cleanup
+
+            final_unmount_cleanup
+
+            printf '\n\n%sSuccess, Linux from Scratch is installed!%s\n\n' "$GREEN" "$RESET"
+        else
+            exit 1
+        fi
+    ;;
+
+
+    :)  # Require options
+        called_with_args="true"
+        printf '%sERROR:%s Option -%s requires an argument.\n\n' "$RED" "$RESET" "$OPTARG" >&2
+        usage
         exit 1
-      fi
-
     ;;
 
 
-
-
-    f)
-      # Final setup
-      called_with_args="true"
-      require_root
-      maybe_clear
-      printf "${MAGENTA}Installing kernel and cleaning up build system.${RESET}\n\n"
-
-      printf "This could be a dangerous operation!\n"
-      printf "Ensure ${BLUE}Steps 1-6${RESET} were previously complete.\n\n"
-
-      printf "If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n"
-      printf "Check ${BLUE}settings.conf${RESET} again if a reboot is performed.\n\n"
-
-      if prompt_confirm "Are you ready to continue?"; then
-        printf "${GREEN}Starting Install${RESET}\n"
-
-        load_config
-
-        printf "${MAGENTA}Verify mounts...${RESET}\n"
-        ensure_lfs_layout_and_mounts
-        printf "${GREEN}Verification successful!${RESET}\n\n"
-        [ -f "$LFS/lfs-ai/scripts/final" ] || die "Missing $LFS/lfs-ai/scripts/final"
-
-            chroot "$LFS" /usr/bin/env -i              \
-                HOME=/root                             \
-                TERM="$TERM"                           \
-                PS1='(lfs chroot) \u:\w\$ '            \
-                PATH=/usr/bin:/usr/sbin:/bin:/sbin     \
-                MAKEFLAGS="$MAKE_JOBS"                 \
-                TESTSUITEFLAGS="$MAKE_JOBS"            \
-                ADD_CFLAGS="${ADD_CFLAGS:-}"           \
-                CFLAGS="${CFLAGS} ${ADD_CFLAGS:-}"     \
-                CXXFLAGS="${CXXFLAGS} ${ADD_CFLAGS:-}" \
-                CPPFLAGS="${CPPFLAGS} ${ADD_CFLAGS:-}" \
-                DRIVE="$DRIVE"                         \
-                EFI="$EFI"                             \
-                SWAP="$SWAP"                           \
-                MAIN="$MAIN"                           \
-                /bin/bash /lfs-ai/scripts/final
-
-            if prompt_remove "Do you want to remove log files?"; then
-                printf "${GREEN}Removing logs...${RESET}\n"
-                rm -rf "$LFS/logs"
-            else
-                printf "${GREEN}Skipping log removal.${RESET}\n"
-            fi
-
-            if prompt_remove "Do you want to remove script files?"; then
-                printf "${GREEN}Removing scripts...${RESET}\n"
-                rm -rf "$LFS/lfs-ai"
-            else
-                printf "${GREEN}Skipping script removal.${RESET}\n"
-            fi
-
-            if prompt_remove "Do you want to remove source files?"; then
-                printf "${GREEN}Removing sources...${RESET}\n"
-                rm -rf "$LFS/sources"
-            else
-                printf "${GREEN}Skipping source removal.${RESET}\n"
-            fi
-
-            if id lfs >/dev/null 2>&1; then
-                if prompt_remove "Do you want to remove the lfs build user and home directory?"; then
-                    userdel -r lfs || die "Failed to remove lfs user"
-                    printf "${GREEN}Removed lfs user.${RESET}\n"
-                else
-                    printf "${GREEN}Skipping lfs user removal.${RESET}\n"
-                fi
-            fi
-
-            if prompt_remove "Do you want to remove ACL entries created for the lfs user?"; then
-                cleanup_lfs_repo_access "$base_dir"
-                printf "${GREEN}Removed ACL entries for lfs.${RESET}\n"
-            else
-                printf "${GREEN}Skipping ACL cleanup.${RESET}\n"
-            fi
-
-            [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
-
-            printf "${MAGENTA}Unmounting...${RESET}\n"
-
-            unmount_if_mounted() {
-                local target="$1"
-
-                if mountpoint -q "$target"; then
-                    umount "$target" 2>/dev/null || umount -l "$target" || die "Failed to unmount $target"
-                fi
-            }
-
-            unmount_if_mounted "$LFS/dev/shm"
-            unmount_if_mounted "$LFS/dev/pts"
-            unmount_if_mounted "$LFS/run"
-            unmount_if_mounted "$LFS/proc"
-            unmount_if_mounted "$LFS/sys"
-            unmount_if_mounted "$LFS/dev"
-            unmount_if_mounted "$LFS/boot"
-            unmount_if_mounted "$LFS"
-
-            if swapon --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
-                swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
-            fi
-
-            printf "\n\n${GREEN}Success, Linux from Scratch is installed!${RESET}\n\n"
-      else
+    ?)  # Handle invalid options
+        called_with_args="true"
+        printf '%sERROR:%s Invalid option: -%s\n\n' "$RED" "$RESET" "$OPTARG" >&2
+        usage
         exit 1
-      fi
-
-    ;;
-
-
-
-
-    :)
-      called_with_args="true"
-      printf "ERROR: Option -%s requires an argument.\n\n" "$OPTARG" >&2
-      usage
-      exit 1
-    ;;
-
-
-
-
-    ?)
-      # Handle invalid options
-      called_with_args="true"
-      printf "ERROR: Invalid option: -%s\n\n" "$OPTARG" >&2
-      usage
-      exit 1
     ;;
   esac
 done
 
 
-
-
 # Script can't run without options
 if [[ "$called_with_args" == "false" ]]; then
-    printf "ERROR: No options were passed. See below before proceeding.\n"
+    printf '%sERROR:%s No options were passed. See below before proceeding.\n' "$RED" "$RESET"
     usage
     exit 1
 fi

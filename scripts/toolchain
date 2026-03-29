@@ -5,194 +5,65 @@
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
-set -e
+set -euo pipefail
 
 umask 022
 
-RED='\033[31m'
-GREEN='\033[32m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-RESET='\033[0m'
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 base_dir="$(cd -- "$script_dir/.." && pwd)"
-CONFIG_FILE="$base_dir/settings.conf"
 SCRIPT_PATH="$(readlink -f "$0")"
 
 
-
-
-# Validate settings
+# Error handling
 die() {
-    printf "${RED}ERROR:${RESET} %s\n" "$1" >&2
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }
 
-validate_placeholder() {
-    local name="$1"
-    local value="$2"
 
-    case "$value" in
-        REPLACE_ME|/dev/REPLACE_ME)
-            die "$name is still set to a placeholder value."
-            ;;
-    esac
+# Required inputs
+require_var() {
+    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
 }
 
-validate_drive_name() {
-    local value="$1"
-
-    validate_placeholder "DRIVE" "$value"
-
-    case "$value" in
-        /dev/sd[a-z]|/dev/vd[a-z]|/dev/xvd[a-z]|/dev/nvme[0-9]n[0-9]|/dev/mmcblk[0-9])
-            ;;
-        *)
-            die "DRIVE must be a whole disk like /dev/sda, /dev/vda, /dev/nvme0n1, or /dev/mmcblk0. Got: $value"
-            ;;
-    esac
-
-    case "$value" in
-        /dev/sd[a-z][0-9]|/dev/vd[a-z][0-9]|/dev/xvd[a-z][0-9]|/dev/nvme[0-9]n[0-9]p[0-9]|/dev/mmcblk[0-9]p[0-9])
-            die "DRIVE must be a whole disk, not a partition. Got: $value"
-            ;;
-    esac
-
-    [ -b "$value" ] || die "DRIVE is not a real block device: $value"
-}
-
-validate_nonempty_path() {
-    local name="$1"
-    local value="$2"
-
-    [ -n "$value" ] || die "$name is empty."
-
-    case "$value" in
-        /*)
-            ;;
-        *)
-            die "$name must be an absolute path. Got: $value"
-            ;;
-    esac
-}
-
-derive_partitions() {
-    case "$DRIVE" in
-        /dev/nvme*|/dev/mmcblk*)
-            EFI="${DRIVE}p1"
-            SWAP="${DRIVE}p2"
-            MAIN="${DRIVE}p3"
-            ;;
-        /dev/sd*|/dev/vd*|/dev/xvd*)
-            EFI="${DRIVE}1"
-            SWAP="${DRIVE}2"
-            MAIN="${DRIVE}3"
-            ;;
-        *)
-            die "Unsupported DRIVE format: $DRIVE"
-            ;;
-    esac
-}
-
-validate_config() {
-    validate_drive_name "$DRIVE"
-
-    validate_nonempty_path "LFS" "$LFS"
-
-    [ "$LFS" != "/" ] || die "LFS cannot be /"
-    [ "$LFS" != "/boot" ] || die "LFS cannot be /boot"
-    [ "$LFS" != "/home" ] || die "LFS cannot be /home"
-    [ "$LFS" != "/mnt" ] || die "LFS cannot be /mnt"
-    [ "$LFS" != "/root" ] || die "LFS cannot be /root"
-
-    derive_partitions
-
-    [ "$EFI" != "$SWAP" ] || die "EFI and SWAP must not be the same partition."
-    [ "$EFI" != "$MAIN" ] || die "EFI and MAIN must not be the same partition."
-    [ "$SWAP" != "$MAIN" ] || die "SWAP and MAIN must not be the same partition."
-}
-
-load_config() {
-    [ -f "$CONFIG_FILE" ] || die "Config file not found at $CONFIG_FILE"
-
-    source "$CONFIG_FILE"
-
-    validate_config
-    printf "Configuration loaded from ${BLUE}%s${RESET}\n\n" "$CONFIG_FILE"
-}
+for var in LFS; do
+    require_var "$var"
+done
 
 
 
 
-# Validate mountpoints
-ensure_mount_source() {
-    local source="$1"
-    local target="$2"
-    shift 2
-
-    if mountpoint -q "$target"; then
-        if findmnt -nr -o SOURCE --target "$target" | grep -qx "$source"; then
-            printf "${GREEN}OK:${RESET}    %s is mounted on %s.\n" "$source" "$target"
-        else
-            die "$target is already mounted, but not from $source"
-        fi
-    else
-        "$@" || die "Failed to mount $source on $target"
-    fi
-}
-
-ensure_swap() {
-    [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
-
-    if swapon --noheadings --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
-        printf "${GREEN}OK:${RESET}    %s swap is active.\n" "$SWAP"
-    else
-        swapon "$SWAP" || die "Failed to activate swap on $SWAP"
-        printf "${GREEN}OK:${RESET}    %s swap activated.\n" "$SWAP"
-    fi
-}
-
-ensure_lfs_layout_and_mounts() {
-    [ -b "$EFI" ]  || die "EFI partition does not exist: $EFI"
-    [ -b "$SWAP" ] || die "SWAP partition does not exist: $SWAP"
-    [ -b "$MAIN" ] || die "MAIN partition does not exist: $MAIN"
-
-    [ -d "$LFS" ] || mkdir -p "$LFS"
-    [ -d "$LFS/boot" ] || mkdir -p "$LFS/boot"
-
-    ensure_mount_source "$MAIN" "$LFS"      mount "$MAIN" "$LFS"
-    ensure_mount_source "$EFI"  "$LFS/boot" mount "$EFI" "$LFS/boot"
-    ensure_swap
-}
-
-
-
-
-# Change user to lfs
+# Verify runtime prerequisites and re-exec as lfs
 if [ "${1:-}" != "--as-lfs" ]; then
-    load_config
-    ensure_lfs_layout_and_mounts
-    id lfs >/dev/null 2>&1 || die "User lfs does not exist. Run prepare first."
-    [ -f /home/lfs/.bashrc ] || die "Missing /home/lfs/.bashrc. Run prepare first."
+    id lfs >/dev/null 2>&1 || die 'User lfs does not exist. Run prepare first.'
+    [ -f /home/lfs/.bashrc ] || die 'Missing /home/lfs/.bashrc. Run prepare first.'
     exec runuser -u lfs -- /bin/bash "$SCRIPT_PATH" --as-lfs
 fi
 
 source /home/lfs/.bashrc
 
-
-
-
+[ -d "$LFS/logs" ] || die "Missing logs directory: $LFS/logs"
 rm -rf "$LFS/logs/toolchain"
 mkdir -p "$LFS/logs/toolchain"
 
+
 # Run install scripts
 found_script=0
+shopt -s nullglob
+
 for script in "$base_dir"/cross-toolchain/*; do
-    if [ -f "$script" ] && [ -x "$script" ]; then
+    if [[ -f "$script" && -x "$script" ]]; then
         found_script=1
         bash "$script"
     fi
 done
 
-[ "$found_script" -eq 1 ] || die "No executable toolchain scripts found in $base_dir/cross-toolchain"
+if (( found_script != 1 )); then
+    die "No executable toolchain scripts found in $base_dir/cross-toolchain"
+fi
