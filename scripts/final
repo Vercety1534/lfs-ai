@@ -67,7 +67,7 @@ prompt_dns_profile() {
     printf '%sNetwork DNS setup%s\n' "$MAGENTA" "$RESET"
     printf 'Choose how DNS should be configured for this system.\n\n'
     printf '  1) Standard DHCP DNS\n'
-    printf '  2) DHCP with filtered / anti-malware DNS (1.1.1.2, 1.0.0.2, 9.9.9.9)\n\n'
+    printf '  2) Filtered DNS (Cloudflare Family + Quad9)\n\n'
     printf 'Selection [1]: '
 
     while :; do

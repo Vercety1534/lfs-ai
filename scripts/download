@@ -186,6 +186,8 @@ printf 'Checksum verification started: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
 printf '%sVerifying source checksums...%s\n' "$MAGENTA" "$RESET"
 cd "$LFS/sources"
 
+# Two CAcerts are not verified do to being non-versioned.
+# Hashes could changed with-out notice, resulting in checksum failures.
 checksum_failed=0
 
 while IFS= read -r line || [ -n "$line" ]; do

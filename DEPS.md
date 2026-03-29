@@ -115,6 +115,7 @@ For best results, the host system should:
 
 - LFS-AI is designed for UEFI/EFI systems only
 - The automated install flow uses Limine instead of GRUB
+- Networking setup only includes ethernet, follow BLFS book for wireless networking.
 - Some BLFS packages are included during the build process to reduce post-install setup work
 - Incorrect [`settings.conf`](settings.conf) values can destroy data or overwrite the wrong disk
 
