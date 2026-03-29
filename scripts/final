@@ -60,6 +60,40 @@ run_log_kernelb() {
 }
 
 
+# Pick DNS profile
+prompt_dns_profile() {
+    local input
+
+    printf '%sNetwork DNS setup%s\n' "$MAGENTA" "$RESET"
+    printf 'Choose how DNS should be configured for this system.\n\n'
+    printf '  1) Standard DHCP DNS\n'
+    printf '  2) DHCP with filtered / anti-malware DNS (1.1.1.2, 1.0.0.2, 9.9.9.9)\n\n'
+    printf 'Selection [1]: '
+
+    while :; do
+        IFS= read -r input
+        [ -n "$input" ] || input='1'
+
+        case "$input" in
+            1)
+                DNS_PROFILE='default'
+                export DNS_PROFILE
+                return 0
+                ;;
+            2)
+                DNS_PROFILE='filtered'
+                export DNS_PROFILE
+                return 0
+                ;;
+            *)
+                printf '%sERROR:%s Enter 1 or 2.\n' "$RED" "$RESET" >&2
+                printf 'Selection [1]: '
+                ;;
+        esac
+    done
+}
+
+
 # Create host name
 prompt_hostname() {
     local input
@@ -316,9 +350,25 @@ EOF
 printf '%sCreation successful!%s\n\n' "$GREEN" "$RESET"
 
 
-# DHCP Configuration
+# Network Configuration
 printf '%sConfiguring network...%s\n' "$MAGENTA" "$RESET"
-cat > /etc/systemd/network/20-wired.network << "EOF"
+prompt_dns_profile
+
+case "$DNS_PROFILE" in
+    default)
+        cat > /etc/systemd/network/20-wired.network << "EOF"
+[Match]
+Name=en* eth*
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+EOF
+        ;;
+    filtered)
+        cat > /etc/systemd/network/20-wired.network << "EOF"
 [Match]
 Name=en* eth*
 
@@ -331,6 +381,11 @@ DNS=1.1.1.2
 DNS=1.0.0.2
 DNS=9.9.9.9
 EOF
+        ;;
+    *)
+        die "Unsupported DNS profile: $DNS_PROFILE"
+        ;;
+esac
 
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
@@ -344,10 +399,10 @@ cat > /etc/hosts << EOF
 # Begin /etc/hosts
 
 127.0.0.1  localhost
+127.0.1.1  $HOSTNAME
 ::1        localhost ip6-localhost ip6-loopback
 ff02::1    ip6-allnodes
 ff02::2    ip6-allrouters
-127.0.1.1  $HOSTNAME
 
 # End /etc/hosts
 EOF

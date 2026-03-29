@@ -318,14 +318,26 @@ load_config() {
 
 
 # Validate mountpoints
-ensure_mounted() {
-    local target="$1"
-    shift
+ensure_bind_mount() {
+    local source="$1"
+    local target="$2"
+    local actual_source
+    shift 2
 
     if mountpoint -q "$target"; then
-        printf '%sOK:%s    %s is mounted.\n' "$GREEN" "$RESET" "$target"
+        actual_source="$(findmnt -nr -o SOURCE --target "$target" 2>/dev/null || true)"
+
+        case "$actual_source" in
+            "$source"|"$source"[[]*)
+                printf '%sOK:%s    %s is bind-mounted on %s.\n' \
+                    "$GREEN" "$RESET" "$source" "$target"
+                ;;
+            *)
+                die "$target is mounted from ${actual_source:-an unknown source} instead of $source"
+                ;;
+        esac
     else
-        "$@" || die "Failed to mount $target"
+        "$@" || die "Failed to bind-mount $source on $target"
     fi
 }
 
@@ -343,6 +355,68 @@ ensure_mount_source() {
     else
         "$@" || die "Failed to mount $source on $target"
     fi
+}
+
+ensure_mount_fstype() {
+    local target="$1"
+    local fstype="$2"
+    local actual_fstype
+    shift 2
+
+    if mountpoint -q "$target"; then
+        actual_fstype="$(findmnt -nr -o FSTYPE --target "$target" 2>/dev/null || true)"
+
+        [ "$actual_fstype" = "$fstype" ] || \
+            die "$target is mounted as ${actual_fstype:-unknown}, not $fstype"
+
+        printf '%sOK:%s    %s is mounted as %s.\n' \
+            "$GREEN" "$RESET" "$target" "$fstype"
+    else
+        "$@" || die "Failed to mount $target as $fstype"
+    fi
+}
+
+ensure_dev_shm_ready() {
+    local shm_target
+    local shm_path
+
+    if mountpoint -q "$LFS/dev/shm"; then
+        if findmnt -nr -o FSTYPE --target "$LFS/dev/shm" | grep -qx 'tmpfs'; then
+            printf '%sOK:%s    %s is mounted as tmpfs.\n' \
+                "$GREEN" "$RESET" "$LFS/dev/shm"
+            return 0
+        fi
+
+        die "$LFS/dev/shm is mounted, but not as tmpfs"
+    fi
+
+    if [ -h "$LFS/dev/shm" ]; then
+        shm_target="$(readlink "$LFS/dev/shm")"
+
+        case "$shm_target" in
+            /*) shm_path="$LFS$shm_target" ;;
+            *)  shm_path="$(dirname "$LFS/dev/shm")/$shm_target" ;;
+        esac
+
+        install -d -m 1777 "$shm_path" || \
+            die 'Failed to create shared memory directory'
+
+        [ -d "$shm_path" ] || \
+            die "$LFS/dev/shm points to $shm_path, but that directory does not exist"
+
+        [ "$(stat -c '%a' "$shm_path")" = "1777" ] || \
+            die "$shm_path exists, but permissions are not 1777"
+
+        printf '%sOK:%s    %s is a symlink and its target exists with mode 1777.\n' \
+            "$GREEN" "$RESET" "$LFS/dev/shm"
+        return 0
+    fi
+
+    mount -t tmpfs -o nosuid,nodev tmpfs "$LFS/dev/shm" || \
+        die "Failed to mount $LFS/dev/shm"
+
+    printf '%sOK:%s    %s is mounted as tmpfs.\n' \
+        "$GREEN" "$RESET" "$LFS/dev/shm"
 }
 
 ensure_swap() {
@@ -371,26 +445,22 @@ ensure_build_mounts() {
 }
 
 ensure_chroot_mounts() {
-    ensure_mounted "$LFS/dev"     mount --bind /dev "$LFS/dev"
-    ensure_mounted "$LFS/dev/pts" mount -t devpts -o gid=5,mode=0620 devpts "$LFS/dev/pts"
-    ensure_mounted "$LFS/proc"    mount -t proc proc "$LFS/proc"
-    ensure_mounted "$LFS/sys"     mount -t sysfs sysfs "$LFS/sys"
-    ensure_mounted "$LFS/run"     mount -t tmpfs tmpfs "$LFS/run"
+    ensure_bind_mount "/dev" "$LFS/dev" \
+        mount --bind /dev "$LFS/dev"
 
-    if mountpoint -q "$LFS/dev/shm"; then
-        printf '%sOK:%s    %s is mounted.\n' "$GREEN" "$RESET" "$LFS/dev/shm"
-    else
-        if [ -h "$LFS/dev/shm" ]; then
-            install -d -m 1777 "$LFS$(realpath /dev/shm)" || die 'Failed to create shared memory directory'
-        else
-            mount -t tmpfs -o nosuid,nodev tmpfs "$LFS/dev/shm" || die "Failed to mount $LFS/dev/shm"
-        fi
-    fi
-}
+    ensure_mount_fstype "$LFS/dev/pts" "devpts" \
+        mount -t devpts -o gid=5,mode=0620 devpts "$LFS/dev/pts"
 
-ensure_lfs_layout_and_mounts() {
-    ensure_build_mounts
-    ensure_chroot_mounts
+    ensure_mount_fstype "$LFS/proc" "proc" \
+        mount -t proc proc "$LFS/proc"
+
+    ensure_mount_fstype "$LFS/sys" "sysfs" \
+        mount -t sysfs sysfs "$LFS/sys"
+
+    ensure_mount_fstype "$LFS/run" "tmpfs" \
+        mount -t tmpfs tmpfs "$LFS/run"
+
+    ensure_dev_shm_ready
 }
 
 
@@ -629,16 +699,16 @@ while getopts "$OPTSTRING" opt; do
 
             # Setup chroot
             printf '%sPreparing the chroot environment.%s\n\n' "$MAGENTA" "$RESET"
-            export LFS MAKE_JOBS
-            "$base_dir/scripts/chroot"
-
-            # Install LFS
-            printf '%sInstalling Linux from Scratch.%s\n\n' "$MAGENTA" "$RESET"
 
             printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
             ensure_chroot_mounts
             printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
 
+            export LFS MAKE_JOBS
+            "$base_dir/scripts/chroot"
+
+            # Install LFS
+            printf '%sInstalling Linux from Scratch.%s\n\n' "$MAGENTA" "$RESET"
             export ROOT_PASS
             run_all_lfs_phases
 
@@ -791,6 +861,7 @@ while getopts "$OPTSTRING" opt; do
             printf '%sStarting install.%s\n' "$GREEN" "$RESET"
             load_config
             ensure_build_mounts
+            ensure_chroot_mounts
             export LFS MAKE_JOBS
             "$base_dir/scripts/chroot"
         else
@@ -820,7 +891,8 @@ while getopts "$OPTSTRING" opt; do
             export ROOT_PASS
 
             printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
-            ensure_lfs_layout_and_mounts
+            ensure_build_mounts
+            ensure_chroot_mounts
             printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
 
             require_lfs_chroot_env
@@ -885,7 +957,8 @@ while getopts "$OPTSTRING" opt; do
             load_config
 
             printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
-            ensure_lfs_layout_and_mounts
+            ensure_build_mounts
+            ensure_chroot_mounts
             printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
 
             run_final_stage
