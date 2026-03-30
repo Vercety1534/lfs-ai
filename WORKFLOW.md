@@ -16,6 +16,7 @@ Before running the installer, review the project documentation:
 ```bash
 less README.md
 less DEPS.md
+less WORKFLOW.md
 ```
 
 At minimum, make sure you understand:
@@ -116,6 +117,9 @@ sudo ./install -t
 sudo ./install -c
 sudo ./install -l all
 sudo ./install -f
+
+# After first boot into the new LFS system:
+sudo lfs-ai-verify
 ```
 
 Refer to `./install -h` and the repository scripts for the currently supported phase controls.
@@ -137,6 +141,26 @@ Pay close attention to:
 Review logs and command output as each stage completes.
 
 Installer logs are written under the target LFS directory during the build process, typically under `$LFS/logs`.
+
+## Verify the installed system after first boot
+
+After the installation completes and you boot into the new LFS system for the first time, run:
+
+```bash
+sudo lfs-ai-verify
+```
+
+This produces a post-install verification report and saves a log under `/var/log`.
+
+Recommended checks after first boot:
+
+- confirm the system boots in UEFI mode
+- confirm `/`, `/boot`, and swap are active as expected
+- confirm the hostname, locale, and keymap are correct
+- confirm `systemd-networkd` and `systemd-resolved` are active
+- review any reported warnings or failures before treating the install as complete
+
+If you are testing LFS-AI and sharing feedback, include the `lfs-ai-verify` log along with your hardware or VM details.
 
 ## Test carefully
 

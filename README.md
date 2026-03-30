@@ -90,6 +90,31 @@ Installer logs are written under the target LFS directory during the build proce
 
 The main log directory is `$LFS/logs`.
 
+## Post-install verification
+
+After the first boot into the new LFS system, run:
+
+```bash
+sudo lfs-ai-verify
+```
+
+This checks the installed system state and writes a troubleshooting log to:
+
+```text
+/var/log/lfs-ai-verify-YYYY-MM-DD_HH-MM-SS.log
+```
+
+The verifier checks items such as:
+
+- boot mode and Limine boot files
+- mounted filesystems and swap
+- hostname, locale, and console settings
+- systemd service health
+- ethernet networking and DNS
+- boot warnings and kernel messages
+
+If something does not work as expected, include the verification log when reporting an issue.
+
 ## Documentation
 
 - [`README.md`](README.md) — project overview and getting started
