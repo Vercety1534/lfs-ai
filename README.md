@@ -92,10 +92,10 @@ The main log directory is `$LFS/logs`.
 
 ## Post-install verification
 
-After the first boot into the new LFS system, run:
+After the first boot into the new LFS system, log in as root and run:
 
 ```bash
-sudo lfs-ai-verify
+lfs-ai-verify
 ```
 
 This checks the installed system state and writes a troubleshooting log to:
@@ -114,6 +114,7 @@ The verifier checks items such as:
 - boot warnings and kernel messages
 
 If something does not work as expected, include the verification log when reporting an issue.
+
 
 ## Documentation
 

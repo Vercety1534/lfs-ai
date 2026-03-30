@@ -118,8 +118,8 @@ sudo ./install -c
 sudo ./install -l all
 sudo ./install -f
 
-# After first boot into the new LFS system:
-sudo lfs-ai-verify
+# After first boot, as root:
+lfs-ai-verify
 ```
 
 Refer to `./install -h` and the repository scripts for the currently supported phase controls.
@@ -144,10 +144,10 @@ Installer logs are written under the target LFS directory during the build proce
 
 ## Verify the installed system after first boot
 
-After the installation completes and you boot into the new LFS system for the first time, run:
+After the installation completes and you boot into the new LFS system for the first time, log in as root and run:
 
 ```bash
-sudo lfs-ai-verify
+lfs-ai-verify
 ```
 
 This produces a post-install verification report and saves a log under `/var/log`.
@@ -161,6 +161,7 @@ Recommended checks after first boot:
 - review any reported warnings or failures before treating the install as complete
 
 If you are testing LFS-AI and sharing feedback, include the `lfs-ai-verify` log along with your hardware or VM details.
+
 
 ## Test carefully
 
