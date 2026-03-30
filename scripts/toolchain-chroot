@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LFS-AI - Toolchain-Chroot Script
 # Purpose: Install remaining directories and toolchain inside chroot
-# Safe rerun: Yes
+# Safe rerun: Conditionally (rerunnable, but only before the next stage is run)
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 

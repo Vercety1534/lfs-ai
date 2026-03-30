@@ -321,8 +321,12 @@ load_config() {
 ensure_bind_mount() {
     local source="$1"
     local target="$2"
+    local expected_source
     local actual_source
+    local expected_note=''
     shift 2
+
+    expected_source="$(findmnt -nr -o SOURCE --target "$source" 2>/dev/null || true)"
 
     if mountpoint -q "$target"; then
         actual_source="$(findmnt -nr -o SOURCE --target "$target" 2>/dev/null || true)"
@@ -333,7 +337,20 @@ ensure_bind_mount() {
                     "$GREEN" "$RESET" "$source" "$target"
                 ;;
             *)
-                die "$target is mounted from ${actual_source:-an unknown source} instead of $source"
+                if [ -n "$expected_source" ]; then
+                    expected_note=" or $expected_source"
+                    case "$actual_source" in
+                        "$expected_source"|"$expected_source"[[]*)
+                            printf '%sOK:%s    %s is bind-mounted on %s.\n' \
+                                "$GREEN" "$RESET" "$source" "$target"
+                            ;;
+                        *)
+                            die "$target is mounted from ${actual_source:-an unknown source} instead of $source$expected_note"
+                            ;;
+                    esac
+                else
+                    die "$target is mounted from ${actual_source:-an unknown source} instead of $source"
+                fi
                 ;;
         esac
     else
@@ -445,6 +462,8 @@ ensure_build_mounts() {
 }
 
 ensure_chroot_mounts() {
+    mkdir -p "$LFS"/{dev,dev/pts,proc,sys,run}
+
     ensure_bind_mount "/dev" "$LFS/dev" \
         mount --bind /dev "$LFS/dev"
 

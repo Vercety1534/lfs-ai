@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LFS-AI - Toolchain Script
 # Purpose: Install the toolchain
-# Safe rerun: Yes
+# Safe rerun: Conditionally (rerunnable, but only before the next stage is run)
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 

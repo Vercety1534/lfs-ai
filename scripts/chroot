@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LFS-AI - Chroot Script
 # Purpose: Verify chroot readiness, copy scripts, and enter chroot
-# Safe rerun: Yes
+# Safe rerun: Conditionally (rerunnable, but only before the next stage is run)
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
@@ -41,19 +41,32 @@ require_bind_mount() {
     local source="$1"
     local target="$2"
     local actual_source
+    local expected_source
+    local expected_note=''
 
     mountpoint -q "$target" || \
         die "$target is not mounted. Run ./install -c or the normal install flow first."
 
     actual_source="$(findmnt -nr -o SOURCE --target "$target" 2>/dev/null || true)"
+    expected_source="$(findmnt -nr -o SOURCE --target "$source" 2>/dev/null || true)"
+
+    [ -n "$expected_source" ] && expected_note=" or $expected_source"
 
     case "$actual_source" in
         "$source"|"$source"[[]*)
-            printf '%sOK:%s %s is bind-mounted on %s.\n' \
-                "$GREEN" "$RESET" "$source" "$target"
             ;;
         *)
-            die "$target is mounted from ${actual_source:-an unknown source} instead of $source"
+            if [ -n "$expected_source" ]; then
+                case "$actual_source" in
+                    "$expected_source"|"$expected_source"[[]*)
+                        ;;
+                    *)
+                        die "$target is mounted from ${actual_source:-an unknown source} instead of $source$expected_note"
+                        ;;
+                esac
+            else
+                die "$target is mounted from ${actual_source:-an unknown source} instead of $source"
+            fi
             ;;
     esac
 }
@@ -70,9 +83,6 @@ require_mount_fstype() {
 
     [ "$actual_fstype" = "$fstype" ] || \
         die "$target is mounted as ${actual_fstype:-unknown}, not $fstype"
-
-    printf '%sOK:%s    %s is mounted as %s.\n' \
-        "$GREEN" "$RESET" "$target" "$fstype"
 }
 
 require_dev_shm_ready() {
@@ -81,8 +91,6 @@ require_dev_shm_ready() {
 
     if mountpoint -q "$LFS/dev/shm"; then
         if findmnt -nr -o FSTYPE --target "$LFS/dev/shm" | grep -qx 'tmpfs'; then
-            printf '%sOK:%s    %s is mounted as tmpfs.\n' \
-                "$GREEN" "$RESET" "$LFS/dev/shm"
             return 0
         fi
 
@@ -103,8 +111,6 @@ require_dev_shm_ready() {
         [ "$(stat -c '%a' "$shm_path")" = "1777" ] || \
             die "$shm_path exists, but permissions are not 1777"
 
-        printf '%sOK:%s    %s is a symlink and its target exists with mode 1777.\n' \
-            "$GREEN" "$RESET" "$LFS/dev/shm"
         return 0
     fi
 
