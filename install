@@ -740,7 +740,8 @@ while getopts "$OPTSTRING" opt; do
 
             final_unmount_cleanup
 
-            printf '\n\n%sSuccess, Linux from Scratch is installed!%s\n\n' "$GREEN" "$RESET"
+            printf '\n\n%sSuccess, Linux from Scratch is installed!%s\n' "$GREEN" "$RESET"
+            printf 'Run %slfs-ai-verify%s after first boot to verify the installation.\n\n' "$BLUE" "$RESET"
 
         else
             exit 1 # Exit with an error code
@@ -986,7 +987,8 @@ while getopts "$OPTSTRING" opt; do
 
             final_unmount_cleanup
 
-            printf '\n\n%sSuccess, Linux from Scratch is installed!%s\n\n' "$GREEN" "$RESET"
+            printf '\n\n%sSuccess, Linux from Scratch is installed!%s\n' "$GREEN" "$RESET"
+            printf 'Run %slfs-ai-verify%s after first boot to verify the installation.\n\n' "$BLUE" "$RESET"
         else
             exit 1
         fi

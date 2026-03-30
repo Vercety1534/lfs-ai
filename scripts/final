@@ -935,6 +935,9 @@ run_log cp -v /root/.profile /etc/skel/.profile
 run_log cp -v /root/.bashrc /etc/skel/.bashrc
 dircolors -p > /etc/skel/.dircolors
 
+[ -f /lfs-ai/scripts/lfs-ai-verify ] || die 'Missing /lfs-ai/scripts/lfs-ai-verify'
+run_log install -m755 -o root -g root /lfs-ai/scripts/lfs-ai-verify /usr/sbin/lfs-ai-verify
+
 run_log systemctl enable systemd-resolved
 run_log systemctl enable systemd-networkd
 

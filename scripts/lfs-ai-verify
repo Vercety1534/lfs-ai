@@ -1,0 +1,572 @@
+#!/usr/bin/env bash
+# LFS-AI - Post-Install Verification Script
+# Purpose: Verify first-boot system state and collect troubleshooting data
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -euo pipefail
+
+umask 022
+
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
+LOG_DIR='/var/log'
+LOG_FILE="$LOG_DIR/lfs-ai-verify-$TIMESTAMP.log"
+
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
+
+EXPECTED_WARN_COUNT=0
+INSTALL_WARN_COUNT=0
+GENERAL_WARN_COUNT=0
+
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
+require_root() {
+    [ "$(id -u)" -eq 0 ] || die 'This script must be run as root.'
+}
+
+section() {
+    printf '\n%s== %s ==%s\n' "$MAGENTA" "$1" "$RESET"
+}
+
+pass() {
+    PASS_COUNT=$((PASS_COUNT + 1))
+    printf '%s[PASS]%s %s\n' "$GREEN" "$RESET" "$1"
+}
+
+warn() {
+    WARN_COUNT=$((WARN_COUNT + 1))
+    printf '%s[WARN]%s %s\n' "$YELLOW" "$RESET" "$1"
+}
+
+fail() {
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    printf '%s[FAIL]%s %s\n' "$RED" "$RESET" "$1"
+}
+
+info() {
+    printf '%s[INFO]%s %s\n' "$BLUE" "$RESET" "$1"
+}
+
+have_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+file_exists() {
+    [ -e "$1" ]
+}
+
+print_cmd_output() {
+    local label="$1"
+    shift
+
+    printf '\n%s-- %s --%s\n' "$BLUE" "$label" "$RESET"
+    if "$@"; then
+        :
+    else
+        warn "Command failed: $label"
+    fi
+}
+
+is_expected_warning() {
+    case "$1" in
+        *'regulatory.db failed'*|\
+        *'faux_driver regulatory'*|\
+        *'nouveau '*|\
+        *'gsp ctor failed'*|\
+        *'iwlwifi '*|\
+        *'Bluetooth: hci0: No support for dsm'*|\
+        *"can't disable ASPM; OS doesn't have ASPM control"*|\
+        *'No config found for PCI dev 272b/02f4'*|\
+        *'mei '*|\
+        *'mei_me '*|\
+        *'snd_hda_intel '*|\
+        *'hpet_acpi_add: no address or irqs in _CRS'*|\
+        *'efi: memattr: Entry covers multiple EFI memory map regions'*|\
+        *'ENERGY_PERF_BIAS: Set to '*|\
+        *'Failed to register i2c client ITE8853:00'*|\
+        *'dbus-daemon'*'Failed to drop supplementary groups'*|\
+        *'#1  #3  #5  #7  #9 #11 #13 #15'*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+classify_warning_block() {
+    local source_name="$1"
+    local content="$2"
+    local line
+    local expected_count=0
+    local install_count=0
+    local general_count=0
+
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+
+        if is_expected_warning "$line"; then
+            expected_count=$((expected_count + 1))
+            continue
+        fi
+
+        case "$line" in
+            *'mount '*|*'fstab'*|*'efibootmgr'*|*'efivarfs'*|*'systemd-networkd'*|*'systemd-resolved'*|*'resolv.conf'*|*'LFS Limine Boot Loader'*|*'limine'*|*'Failed to mount '*|*'No such file or directory'*|*'Failed to start '*|*'Dependency failed for '*|*'failed to load configuration'*|*'cannot find '*|*'not found'*|*'timed out waiting for device '*)
+                install_count=$((install_count + 1))
+                ;;
+            *)
+                general_count=$((general_count + 1))
+                ;;
+        esac
+    done <<< "$content"
+
+    if [ "$expected_count" -gt 0 ]; then
+        EXPECTED_WARN_COUNT=$((EXPECTED_WARN_COUNT + expected_count))
+        info "$source_name: $expected_count expected hardware warning line(s)"
+    fi
+
+    if [ "$install_count" -gt 0 ]; then
+        INSTALL_WARN_COUNT=$((INSTALL_WARN_COUNT + install_count))
+        warn "$source_name: $install_count likely installer-related warning line(s)"
+    fi
+
+    if [ "$general_count" -gt 0 ]; then
+        GENERAL_WARN_COUNT=$((GENERAL_WARN_COUNT + general_count))
+        warn "$source_name: $general_count general warning line(s)"
+    fi
+}
+
+start_logging() {
+    mkdir -p "$LOG_DIR"
+    touch "$LOG_FILE" || die "Could not create log file: $LOG_FILE"
+    exec > >(tee -a "$LOG_FILE") 2>&1
+}
+
+check_system_identity() {
+    section 'System identity'
+
+    if file_exists '/etc/lfs-release'; then
+        pass '/etc/lfs-release exists'
+        printf 'LFS release: '
+        cat /etc/lfs-release
+    else
+        fail '/etc/lfs-release is missing'
+    fi
+
+    if file_exists '/etc/os-release'; then
+        pass '/etc/os-release exists'
+        grep -E '^(NAME|VERSION|PRETTY_NAME|ID)=' /etc/os-release || true
+    else
+        fail '/etc/os-release is missing'
+    fi
+
+    if have_cmd uname; then
+        pass 'uname is available'
+        printf 'Kernel: %s\n' "$(uname -r)"
+        printf 'Architecture: %s\n' "$(uname -m)"
+        printf 'Full uname: %s\n' "$(uname -a)"
+    else
+        fail 'uname command is missing'
+    fi
+
+    if have_cmd hostnamectl; then
+        print_cmd_output 'hostnamectl status' hostnamectl status
+    else
+        warn 'hostnamectl is not available'
+    fi
+
+    if file_exists '/etc/hostname'; then
+        pass '/etc/hostname exists'
+        printf 'Hostname file contents: '
+        cat /etc/hostname
+    else
+        fail '/etc/hostname is missing'
+    fi
+
+    printf 'Uptime: '
+    uptime || warn 'Could not read uptime'
+}
+
+check_boot_and_firmware() {
+    section 'Boot and firmware'
+
+    if [ -d /sys/firmware/efi ]; then
+        pass 'System is booted in UEFI mode'
+    else
+        fail 'System does not appear to be booted in UEFI mode'
+    fi
+
+    if file_exists '/boot/limine.conf'; then
+        pass '/boot/limine.conf exists'
+    else
+        fail '/boot/limine.conf is missing'
+    fi
+
+    if [ -d /boot/EFI ]; then
+        pass '/boot/EFI exists'
+    else
+        warn '/boot/EFI does not exist'
+    fi
+
+    if find /boot -maxdepth 3 -iname 'liminex64.efi' 2>/dev/null | grep -q .; then
+        pass 'Limine EFI binary found under /boot'
+        find /boot -maxdepth 3 -iname 'liminex64.efi' 2>/dev/null || true
+    else
+        warn 'Could not find Limine EFI binary under /boot'
+    fi
+
+    if ls /boot/vmlinuz-* >/dev/null 2>&1; then
+        pass 'Kernel image(s) found in /boot'
+        ls -1 /boot/vmlinuz-* || true
+    else
+        fail 'No kernel images found in /boot'
+    fi
+
+    if ls /boot/config-* >/dev/null 2>&1; then
+        pass 'Kernel config file(s) found in /boot'
+    else
+        warn 'No kernel config files found in /boot'
+    fi
+
+    if have_cmd efibootmgr; then
+        print_cmd_output 'efibootmgr' efibootmgr
+        if efibootmgr | grep -Fq 'LFS Limine Boot Loader'; then
+            pass 'EFI boot entry for LFS Limine Boot Loader found'
+        else
+            warn 'EFI boot entry for LFS Limine Boot Loader not found'
+        fi
+    else
+        warn 'efibootmgr is not available'
+    fi
+
+    if file_exists '/boot/limine.conf'; then
+        if grep -Eq 'root=PARTUUID=' /boot/limine.conf; then
+            pass 'Limine config contains PARTUUID root entry'
+        else
+            warn 'Limine config does not contain a PARTUUID root entry'
+        fi
+    fi
+}
+
+check_filesystems_and_mounts() {
+    section 'Filesystems and mounts'
+
+    if have_cmd findmnt; then
+        if findmnt -nr / >/dev/null 2>&1; then
+            pass 'Root filesystem is mounted'
+        else
+            fail 'Root filesystem does not appear mounted properly'
+        fi
+
+        if findmnt -nr /boot >/dev/null 2>&1; then
+            pass '/boot is mounted'
+        else
+            warn '/boot is not mounted'
+        fi
+    else
+        warn 'findmnt is not available'
+    fi
+
+    if have_cmd swapon; then
+        if swapon --show | grep -q .; then
+            pass 'Swap is active'
+            swapon --show || true
+        else
+            warn 'No active swap detected'
+        fi
+    else
+        warn 'swapon is not available'
+    fi
+
+    if file_exists '/etc/fstab'; then
+        pass '/etc/fstab exists'
+        printf '\n%s-- /etc/fstab --%s\n' "$BLUE" "$RESET"
+        cat /etc/fstab
+    else
+        fail '/etc/fstab is missing'
+    fi
+
+    if have_cmd findmnt; then
+        print_cmd_output 'findmnt' findmnt
+    fi
+
+    if have_cmd lsblk; then
+        print_cmd_output 'lsblk -f' lsblk -f
+    fi
+}
+
+check_networking() {
+    section 'Networking'
+
+    if have_cmd systemctl; then
+        if systemctl is-enabled systemd-networkd >/dev/null 2>&1; then
+            pass 'systemd-networkd is enabled'
+        else
+            warn 'systemd-networkd is not enabled'
+        fi
+
+        if systemctl is-active systemd-networkd >/dev/null 2>&1; then
+            pass 'systemd-networkd is active'
+        else
+            warn 'systemd-networkd is not active'
+        fi
+
+        if systemctl is-enabled systemd-resolved >/dev/null 2>&1; then
+            pass 'systemd-resolved is enabled'
+        else
+            warn 'systemd-resolved is not enabled'
+        fi
+
+        if systemctl is-active systemd-resolved >/dev/null 2>&1; then
+            pass 'systemd-resolved is active'
+        else
+            warn 'systemd-resolved is not active'
+        fi
+    else
+        warn 'systemctl is not available'
+    fi
+
+    if have_cmd ip; then
+        print_cmd_output 'ip link' ip link
+        print_cmd_output 'ip addr' ip addr
+        print_cmd_output 'ip route' ip route
+
+        if ip route | grep -q '^default '; then
+            pass 'Default route is present'
+        else
+            warn 'No default route found'
+        fi
+
+        if ip -4 addr show scope global | grep -q 'inet '; then
+            pass 'At least one global IPv4 address is present'
+        else
+            warn 'No global IPv4 address detected'
+        fi
+    else
+        fail 'ip command is not available'
+    fi
+
+    if file_exists '/etc/resolv.conf'; then
+        pass '/etc/resolv.conf exists'
+        printf '\n%s-- /etc/resolv.conf --%s\n' "$BLUE" "$RESET"
+        cat /etc/resolv.conf
+    else
+        fail '/etc/resolv.conf is missing'
+    fi
+
+    if have_cmd resolvectl; then
+        print_cmd_output 'resolvectl status' resolvectl status
+    else
+        warn 'resolvectl is not available'
+    fi
+
+    if have_cmd getent; then
+        if getent hosts one.one.one.one >/dev/null 2>&1; then
+            pass 'DNS resolution succeeded for one.one.one.one'
+        else
+            warn 'DNS resolution failed for one.one.one.one'
+        fi
+    else
+        warn 'getent is not available'
+    fi
+
+    if have_cmd ping; then
+        if ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1; then
+            pass 'Basic network connectivity test to 1.1.1.1 succeeded'
+        else
+            warn 'Basic network connectivity test to 1.1.1.1 failed'
+        fi
+    else
+        warn 'ping is not available'
+    fi
+}
+
+check_locale_and_console() {
+    section 'Locale and console'
+
+    if file_exists '/etc/locale.conf'; then
+        pass '/etc/locale.conf exists'
+        printf '\n%s-- /etc/locale.conf --%s\n' "$BLUE" "$RESET"
+        cat /etc/locale.conf
+    else
+        warn '/etc/locale.conf is missing'
+    fi
+
+    if file_exists '/etc/vconsole.conf'; then
+        pass '/etc/vconsole.conf exists'
+        printf '\n%s-- /etc/vconsole.conf --%s\n' "$BLUE" "$RESET"
+        cat /etc/vconsole.conf
+    else
+        warn '/etc/vconsole.conf is missing'
+    fi
+
+    if file_exists '/etc/hosts'; then
+        pass '/etc/hosts exists'
+    else
+        warn '/etc/hosts is missing'
+    fi
+
+    if have_cmd locale; then
+        print_cmd_output 'locale' locale
+    else
+        warn 'locale command is not available'
+    fi
+}
+
+check_core_tools() {
+    section 'Core tool sanity'
+
+    if have_cmd bash; then
+        pass 'bash is available'
+        bash --version | head -n 1 || true
+    else
+        fail 'bash is missing'
+    fi
+
+    if have_cmd gcc; then
+        pass 'gcc is available'
+        gcc --version | head -n 1 || true
+    else
+        warn 'gcc is missing'
+    fi
+
+    if have_cmd g++; then
+        pass 'g++ is available'
+        g++ --version | head -n 1 || true
+    else
+        warn 'g++ is missing'
+    fi
+
+    if have_cmd make; then
+        pass 'make is available'
+        make --version | head -n 1 || true
+    else
+        warn 'make is missing'
+    fi
+
+    if have_cmd python3; then
+        pass 'python3 is available'
+        python3 --version || true
+    else
+        warn 'python3 is missing'
+    fi
+
+    if have_cmd perl; then
+        pass 'perl is available'
+        perl -v | head -n 2 || true
+    else
+        warn 'perl is missing'
+    fi
+}
+
+check_service_health() {
+    section 'Service health'
+
+    if have_cmd systemctl; then
+        printf '\n%s-- systemctl --failed --%s\n' "$BLUE" "$RESET"
+        if systemctl --failed --no-pager; then
+            :
+        else
+            warn 'systemctl --failed returned a non-zero status'
+        fi
+
+        if systemctl --failed --no-legend --no-pager 2>/dev/null | grep -q .; then
+            warn 'One or more failed systemd units detected'
+        else
+            pass 'No failed systemd units detected'
+        fi
+    else
+        warn 'systemctl is not available'
+    fi
+}
+
+check_logs() {
+    section 'Warnings and logs'
+
+    local journal_output=''
+    local dmesg_output=''
+
+    if have_cmd journalctl; then
+        journal_output="$(journalctl -b -p warning --no-pager 2>/dev/null || true)"
+
+        printf '\n%s-- journalctl -b -p warning --%s\n' "$BLUE" "$RESET"
+        if [ -n "$journal_output" ]; then
+            printf '%s\n' "$journal_output"
+            classify_warning_block 'journalctl' "$journal_output"
+        else
+            pass 'No journalctl boot warnings detected'
+        fi
+    else
+        warn 'journalctl is not available'
+    fi
+
+    if have_cmd dmesg; then
+        dmesg_output="$(dmesg --level=err,warn 2>/dev/null || true)"
+
+        printf '\n%s-- dmesg warnings/errors --%s\n' "$BLUE" "$RESET"
+        if [ -n "$dmesg_output" ]; then
+            printf '%s\n' "$dmesg_output"
+            classify_warning_block 'dmesg' "$dmesg_output"
+        else
+            pass 'No dmesg warnings/errors detected'
+        fi
+    else
+        warn 'dmesg is not available'
+    fi
+}
+
+print_summary() {
+    section 'Summary'
+
+    printf '%sPass:%s %s\n' "$GREEN" "$RESET" "$PASS_COUNT"
+    printf '%sWarn:%s %s\n' "$YELLOW" "$RESET" "$WARN_COUNT"
+    printf '%sFail:%s %s\n' "$RED" "$RESET" "$FAIL_COUNT"
+
+    printf '%sExpected hardware warnings:%s %s\n' "$BLUE" "$RESET" "$EXPECTED_WARN_COUNT"
+    printf '%sInstaller-related warnings:%s %s\n' "$YELLOW" "$RESET" "$INSTALL_WARN_COUNT"
+    printf '%sGeneral warnings:%s %s\n' "$YELLOW" "$RESET" "$GENERAL_WARN_COUNT"
+
+    if [ "$FAIL_COUNT" -gt 0 ]; then
+        printf '\n%sOverall result:%s FAIL\n' "$RED" "$RESET"
+    elif [ "$WARN_COUNT" -gt 0 ]; then
+        printf '\n%sOverall result:%s PASS WITH WARNINGS\n' "$YELLOW" "$RESET"
+    else
+        printf '\n%sOverall result:%s PASS\n' "$GREEN" "$RESET"
+    fi
+
+    printf 'Log file: %s\n' "$LOG_FILE"
+}
+
+main() {
+    require_root
+    start_logging
+
+    printf '%sLFS-AI Post-Install Verification%s\n' "$MAGENTA" "$RESET"
+    printf 'Started: %s\n' "$(date '+%F %T')"
+    printf 'Log file: %s\n' "$LOG_FILE"
+
+    check_system_identity
+    check_boot_and_firmware
+    check_filesystems_and_mounts
+    check_networking
+    check_locale_and_console
+    check_core_tools
+    check_service_health
+    check_logs
+    print_summary
+}
+
+main "$@"
