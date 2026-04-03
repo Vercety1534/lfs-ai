@@ -57,7 +57,7 @@ run_log ninja
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-DESTDIR="/usr/pkg/$PACKAGE/$VERSION" run_log ninja install
+run_log env DESTDIR="/usr/pkg/$PACKAGE/$VERSION" ninja install
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

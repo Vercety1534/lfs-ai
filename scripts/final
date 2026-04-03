@@ -13,9 +13,9 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
-KERNELA=6.19.10
-KERNELB=7.0-rc5
-LFS_VERSION=r13.0-12-systemd
+KERNELA=6.19.11
+KERNELB=7.0-rc6
+LFS_VERSION=r13.0-17-systemd
 
 
 # Error handling
@@ -896,8 +896,6 @@ cat > /root/.bash_logout << "EOF"
 EOF
 
 cat > /etc/issue << "EOF"
-\d \t
-
 Welcome to Linux From Scratch (LFS-AI)!
 
 EOF

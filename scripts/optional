@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# LFS-AI - LFS Optional Install Script
+# Purpose: Install cmake & fastfetch
+# Safe rerun: Yes
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+set -euo pipefail
+
+RED=$'\033[31m'
+RESET=$'\033[0m'
+
+cd /lfs-ai
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
+rm -rf /logs/optional
+mkdir -p /logs/optional
+
+[ -d /lfs-ai/optional ] || die 'Missing /lfs-ai/optional'
+
+# Phase 1 install
+shopt -s nullglob
+
+found_script=0
+for script in /lfs-ai/optional/*; do
+    if [[ -f "$script" && -x "$script" ]]; then
+        found_script=1
+        bash "$script"
+    fi
+done
+
+if (( found_script != 1 )); then
+    die 'No executable scripts found in /lfs-ai/optional'
+fi

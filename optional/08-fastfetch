@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install D bus
+# LFS-AI - Build and install fastfetch
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=dbus
-VERSION=1.16.2
+PACKAGE=fastfetch
+VERSION=2.61.0
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+LOG_FILE="/logs/optional/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -35,19 +35,18 @@ run_log() {
 }
 
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
+[ -f "/sources/$VERSION.tar.gz" ] || die "Missing source archive: /sources/$VERSION.tar.gz"
 
 cd /sources
 
 rm -rf "$PACKAGE-$VERSION"
-tar -xf "$PACKAGE-$VERSION.tar.xz"
+tar -xf "$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
-mkdir build
-cd    build
-
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback ..
+mkdir -p build
+cd       build
+run_log cmake -DCMAKE_INSTALL_PREFIX=/usr -G Ninja ..
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -56,13 +55,51 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log env DESTDIR="/usr/pkg/$PACKAGE/$VERSION" ninja install
-
-run_log ln -svf /etc/machine-id "/usr/pkg/$PACKAGE/$VERSION/var/lib/dbus"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"
 run_log graft -iV "$PACKAGE/$VERSION"
+
+run_log install -d -m755 /etc/skel/.config/fastfetch
+run_log install -d -m755 /root/.config/fastfetch
+
+cat > /etc/skel/.config/fastfetch/config.jsonc <<'EOF'
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "none"
+  },
+  "display": {
+    "separator": "  "
+  },
+  "modules": [
+    "title",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    {
+      "type": "command",
+      "key": "Packages",
+      "text": "find /usr/pkg -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | awk '{print $1}'"
+    },
+    "shell",
+    "terminal",
+    "cpu",
+    "gpu",
+    "memory",
+    {
+      "type": "disk",
+      "folders": "/"
+    },
+    "localip",
+    "colors"
+  ]
+}
+EOF
+
+run_log cp -f /etc/skel/.config/fastfetch/config.jsonc /root/.config/fastfetch/config.jsonc
 printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources

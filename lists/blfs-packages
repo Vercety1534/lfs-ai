@@ -1,19 +1,27 @@
 btrfs-progs-6.19.1
+cmake-4.3.1 (Optional - Fastfetch)
+curl-8.19.0
 dosfstools-4.2
 efibootmgr-18
 efivar-39
+fastfetch-2.61.0 (Optional)
 graft-2.16
 icu4c-78.3
 inih-r62
+libarchive-3.8.6 (Optional - Fastfetch)
 libidn2-2.3.8
 libpsl-0.21.5
 libtasn1-4.21.0
 libunistring-1.4.2
-limine-11.1.0-binary
-linux-7.0-rc5
+libuv-1.52.1 (Optional - Fastfetch)
+libxml2-2.15.2 (Optional - Fastfetch)
+limine-11.2.0-binary
+linux-7.0-rc6
 lzo-2.10
 make-ca-1.16.1
 nano-8.7.1
+nettle-4.0 (Optional - Fastfetch)
+nghttp2-1.68.1 (Optional - Fastfetch)
 nspr-4.38.2
 nss-3.122
 p11-kit-0.26.2

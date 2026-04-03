@@ -18,7 +18,7 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
-OPTSTRING=":Acdfhl:pstv"
+OPTSTRING=":Acdfhl:opstv"
 called_with_args="false"
 PHASE=""
 
@@ -57,7 +57,7 @@ usage() {
     printf 'It can run the full install or individual stages.\n'
     printf 'If a stage fails, troubleshoot it and continue from that point.\n'
     printf '\n'
-    printf 'Usage: %s [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l <arg>] [-f] [--version]\n' "$0"
+    printf 'Usage: %s [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l <arg>] [-o] [-f] [--version]\n' "$0"
     printf '    -A        :  ALL   :   Complete install including drive partitioning\n'
     printf '    -v        :  DEPS  :   Verify dependencies on host system\n'
     printf '    -h        :  Help  :   Display help message\n'
@@ -68,7 +68,8 @@ usage() {
     printf '    -t        : Step 4 :   Install the toolchain\n'
     printf '    -c        : Step 5 :   Prepare the chroot environment\n'
     printf '    -l <arg>  : Step 6 :   Install LFS phases [1|2|3|4|5|all]\n'
-    printf '    -f        : Step 7 :   Install kernel, config files, and clean up the build system\n'
+    printf '    -o        : Step 7 :   Install cmake, fastfetch, and required dependencies (%sOptional%s)\n' "$BLUE" "$RESET"
+    printf '    -f        : Step 8 :   Install kernel, config files, and clean up the build system\n'
     printf '\n'
     printf '    --version :        :   Display version information\n'
     printf '\n'
@@ -535,10 +536,16 @@ run_all_lfs_phases() {
     graft_install_phase_pkg 2 ncurses 6.6
 
     run_named_phase 3
-    graft_install_phase_pkg 3 perl 5.42.1
+    graft_install_phase_pkg 3 perl 5.42.2
 
     run_named_phase 4
     run_named_phase 5
+}
+
+run_optional_stage() {
+    [ -f "$LFS/lfs-ai/scripts/optional" ] || die "Missing $LFS/lfs-ai/scripts/optional"
+    require_lfs_chroot_env
+    run_in_lfs_chroot /bin/bash /lfs-ai/scripts/optional
 }
 
 run_final_stage() {
@@ -731,6 +738,13 @@ while getopts "$OPTSTRING" opt; do
             export ROOT_PASS
             run_all_lfs_phases
 
+            # Install optional packages
+            if prompt_confirm 'Would you like to install cmake, fastfetch, and required dependencies?'; then
+                run_optional_stage
+            else
+                printf '%sSkipping optional packages.%s\n\n' "$GREEN" "$RESET"
+            fi
+
             # Final setup
             printf '%sInstalling kernel and cleaning up build system.%s\n\n' "$MAGENTA" "$RESET"
 
@@ -903,7 +917,6 @@ while getopts "$OPTSTRING" opt; do
         printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
         printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
 
-
         if prompt_confirm 'Are you ready to continue?'; then
             printf '%sStarting install.%s\n\n' "$GREEN" "$RESET"
 
@@ -953,6 +966,36 @@ while getopts "$OPTSTRING" opt; do
             ;;
 
             esac
+        else
+            exit 1
+        fi
+    ;;
+
+
+    o) # Optional packages
+        called_with_args="true"
+        require_root
+        maybe_clear
+        printf '%sInstalling optional packages.%s\n' "$MAGENTA" "$RESET"
+        printf 'This will install cmake, fastfetch, and required dependencies\n\n'
+
+        printf 'This could be a dangerous operation!\n'
+        printf 'Ensure %sSteps 1-6%s were previously complete.\n\n' "$BLUE" "$RESET"
+
+        printf 'If you reboot between install steps the drive name could change as they are not always loaded in the same order.\n'
+        printf 'Check %ssettings.conf%s again if a reboot is performed.\n\n' "$BLUE" "$RESET"
+
+        if prompt_confirm 'Are you ready to continue?'; then
+            printf '%sStarting install.%s\n\n' "$GREEN" "$RESET"
+
+            load_config
+
+            printf '%sVerify mounts...%s\n' "$MAGENTA" "$RESET"
+            ensure_build_mounts
+            ensure_chroot_mounts
+            printf '%sVerification successful!%s\n\n' "$GREEN" "$RESET"
+
+            run_optional_stage
         else
             exit 1
         fi

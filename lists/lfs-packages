@@ -1,9 +1,9 @@
 man-pages-6.17
-iana-etc-20260318
+iana-etc-20260327
 glibc-2.43
 zlib-1.3.2
 bzip2-1.0.8
-xz-5.8.2
+xz-5.8.3
 lz4-1.10.0
 zstd-1.5.7
 file-5.47
@@ -39,11 +39,11 @@ gperf-3.3
 expat-2.7.5
 inetutils-2.7
 less-692
-perl-5.42.1
+perl-5.42.2
 File-ShareDir-Install-0.14
 Class-Inspector-1.36
 File-ShareDir-1.118
-XML-Parser-2.54
+XML-Parser-2.55
 intltool-0.51.0
 autoconf-2.73
 automake-1.18.1
@@ -74,13 +74,13 @@ tar-1.35
 texinfo-7.3
 markupsafe-3.0.3
 jinja2-3.1.6
-systemd-259.5
+systemd-260.1
 dbus-1.16.2
 man-db-2.13.1
 procps-ng-4.0.6
-util-linux-2.41.3
+util-linux-2.42
 e2fsprogs-1.47.4
-linux-6.19.10
+linux-6.19.11
 
 tzdata2026a
 

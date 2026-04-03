@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=util-linux
-VERSION=2.41.3
+VERSION=2.42
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
