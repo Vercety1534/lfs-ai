@@ -79,9 +79,37 @@ Required kernel option:
 `CONFIG_UNIX98_PTYS=y`
 
 
-## Expected Command Links
+## Required Host Headers
 
-The host system must also provide the following command mappings, normally through symbolic or hard links:
+The host system must also provide:
+
+- Linux kernel headers
+- gettext headers
+
+These are expected to provide at least:
+
+- `/usr/include/linux/perf_event.h`
+- `/usr/include/libintl.h`
+
+
+## Compatibility Notes
+
+LFS-AI is tested primarily on GNU-based Linux hosts.
+
+Some hosts may provide alternate implementations of common tools, such as:
+
+- BusyBox
+- uutils
+- non-Bash `/bin/sh`
+- non-GNU `awk`
+- missing `yacc` compatibility link
+
+These may still work, but `./install -v` may report compatibility warnings even when the host is otherwise usable.
+
+
+## Preferred Command Links
+
+For best compatibility, the host should also provide these common command mappings:
 
 `awk`              = `gawk`
 
@@ -106,6 +134,7 @@ The host system should also support:
 For best results, the host system should:
 
 - be a modern Linux distribution
+- use a GNU-based userland where possible
 - use UEFI/EFI if you plan to follow the full automated install flow
 - have enough disk space for sources, build files, logs, and the target LFS system
 - have enough RAM and swap for large packages such as GCC and Python
@@ -115,7 +144,7 @@ For best results, the host system should:
 
 - LFS-AI is designed for UEFI/EFI systems only
 - The automated install flow uses Limine instead of GRUB
-- Networking setup only includes ethernet, follow BLFS book for wireless networking.
+- Networking setup only includes ethernet; follow the BLFS book for wireless networking
 - Some BLFS packages are included during the build process to reduce post-install setup work
 - Incorrect [`settings.conf`](settings.conf) values can destroy data or overwrite the wrong disk
 
