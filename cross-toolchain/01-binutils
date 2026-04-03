@@ -55,6 +55,7 @@ run_log ../configure --prefix="$LFS/tools"  \
                      --with-sysroot="$LFS"  \
                      --target="$LFS_TGT"    \
                      --disable-nls          \
+                     --disable-gprofng      \
                      --enable-plugins       \
                      --enable-lto           \
                      --disable-werror       \

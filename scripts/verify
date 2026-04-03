@@ -29,53 +29,109 @@ grep --version > /dev/null 2> /dev/null || bail "grep does not work\n"
 sed -n '' /dev/null || bail "sed does not work\n"
 sort   /dev/null || bail "sort does not work\n"
 
-check_coreutils() {
-   local line ver min="8.25"
 
-   if ! type -p sort >/dev/null 2>&1; then
-      printf '%sERROR:%s Cannot find sort (Coreutils)\n' "$RED" "$RESET"
-      FAILED=1
-      return 1
-   fi
+version_ge() {
+    local IFS=.
+    local i
+    local -a found required
 
-   line="$(sort --version 2>&1 | head -n1)"
+    read -r -a found <<< "${1//[^0-9.]/}"
+    read -r -a required <<< "${2//[^0-9.]/}"
 
-   case "$line" in
-      *"GNU coreutils"*)
-         ver="$(printf '%s\n' "$line" | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)"
-         if printf '%s\n' "$min" "$ver" | sort --version-sort --check >/dev/null 2>&1; then
-            printf '%sOK:%s    Coreutils     %-6s    >=    %s (GNU)\n' \
-               "$GREEN" "$RESET" "$ver" "$min"
+    for ((i=0; i<${#found[@]} || i<${#required[@]}; i++)); do
+        local f="${found[i]:-0}"
+        local r="${required[i]:-0}"
+
+        if ((10#$f > 10#$r)); then
             return 0
-         fi
-         printf '%sERROR:%s Coreutils is TOO OLD (%s or later required)\n' \
-            "$RED" "$RESET" "$min"
-         FAILED=1
-         return 1
-         ;;
+        fi
+        if ((10#$f < 10#$r)); then
+            return 1
+        fi
+    done
 
-      *"uutils coreutils"*)
-         ver="$(printf '%s\n' "$line" | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)"
-         WARNED=1
-         printf '%sWARN:%s  Coreutils     %-6s    uutils detected (untested for LFS-AI)\n' \
-            "$MAGENTA" "$RESET" "${ver:-unknown}"
-         return 0
-         ;;
+    return 0
+}
 
-      *"BusyBox"*)
-         WARNED=1
-         printf '%sWARN:%s  Coreutils     BusyBox   detected (not GNU coreutils)\n' \
-            "$MAGENTA" "$RESET"
-         return 0
-         ;;
+detect_impl() {
+    local cmd="$1"
+    local line
 
-      *)
-         printf '%sERROR:%s Unknown Coreutils implementation: %s\n' \
-            "$RED" "$RESET" "$line"
-         FAILED=1
-         return 1
-         ;;
-   esac
+    if ! type -p "$cmd" >/dev/null 2>&1; then
+        printf 'missing\n'
+        return 0
+    fi
+
+    line="$("$cmd" --version 2>&1 | head -n1 || true)"
+
+    case "$line" in
+        *" not GNU sed version "*)
+            printf 'busybox\n'
+            ;;
+        *"uutils"*)
+            printf 'uutils\n'
+            ;;
+        *"BusyBox"*)
+            printf 'busybox\n'
+            ;;
+        *"GNU coreutils"*|*"GNU "*|*"GNU"*)
+            printf 'gnu\n'
+            ;;
+        *)
+            if "$cmd" --help 2>&1 | grep -qi 'BusyBox'; then
+                printf 'busybox\n'
+            else
+                printf 'unknown\n'
+            fi
+            ;;
+    esac
+}
+
+check_impl_tool() {
+    local label="$1"
+    local cmd="$2"
+    local min="$3"
+    local impl v
+
+    impl="$(detect_impl "$cmd")"
+
+    case "$impl" in
+        gnu)
+            v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
+            if [ -z "$v" ]; then
+                printf '%sERROR:%s %-12s    version could not be detected\n' "$RED" "$RESET" "$label"
+                FAILED=1
+                return 1
+            fi
+            if version_ge "$v" "$min"; then
+                printf '%sOK:%s    %-12s    %-6s    >=    %-6s    (GNU)\n' "$GREEN" "$RESET" "$label" "$v" "$min"
+                return 0
+            fi
+            printf '%sERROR:%s %-12s    is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$label" "$min"
+            FAILED=1
+            return 1
+            ;;
+        uutils)
+            WARNED=1
+            printf '%sWARN:%s  %-12s    uutils implementation detected\n' "$MAGENTA" "$RESET" "$label"
+            return 0
+            ;;
+        busybox)
+            WARNED=1
+            printf '%sWARN:%s  %-12s    BusyBox implementation detected\n' "$MAGENTA" "$RESET" "$label"
+            return 0
+            ;;
+        missing)
+            printf '%sERROR:%s %-12s    missing\n' "$RED" "$RESET" "$label"
+            FAILED=1
+            return 1
+            ;;
+        *)
+            WARNED=1
+            printf '%sWARN:%s  %-12s    unknown implementation detected\n' "$MAGENTA" "$RESET" "$label"
+            return 0
+            ;;
+    esac
 }
 
 ver_check() {
@@ -98,11 +154,11 @@ ver_check() {
       return 1
    fi
 
-   if printf '%s\n' "$min" "$v" | sort --version-sort --check >/dev/null 2>&1; then
-      printf '%sOK:%s    %-10s    %-6s    >=    %s\n' "$GREEN" "$RESET" "$name" "$v" "$min"
+   if version_ge "$v" "$min"; then
+      printf '%sOK:%s    %-12s    %-6s    >=    %s\n' "$GREEN" "$RESET" "$name" "$v" "$min"
       return 0
    else
-      printf '%sERROR:%s %-10s    is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$name" "$min"
+      printf '%sERROR:%s %-12s    is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$name" "$min"
       FAILED=1
       return 1
    fi
@@ -112,7 +168,7 @@ need_nvme_version() {
    if compgen -G '/dev/nvme*n1' >/dev/null; then
       ver_check 'NVMe-CLI' nvme 1.9
    else
-      printf '%sSKIP:%s  %-10s    no NVMe device detected\n' "$BLUE" "$RESET" 'NVMe-CLI'
+      printf '%sSKIP:%s  %-12s    no NVMe device detected\n' "$BLUE" "$RESET" 'NVMe-CLI'
    fi
 }
 
@@ -121,13 +177,37 @@ need_cmd() {
    local cmd="$2"
 
    if type -p "$cmd" >/dev/null 2>&1; then
-      printf '%sOK:%s    %-12s  Found\n' "$GREEN" "$RESET" "$name"
+      printf '%sOK:%s    %-14s  Found\n' "$GREEN" "$RESET" "$name"
       return 0
    else
-      printf '%sERROR:%s %-12s  Missing\n' "$RED" "$RESET" "$name"
+      printf '%sERROR:%s %-14s  Missing\n' "$RED" "$RESET" "$name"
       FAILED=1
       return 1
    fi
+}
+
+need_linux_headers() {
+    if [ -f /usr/include/linux/perf_event.h ] && [ -f /usr/include/linux/limits.h ]; then
+        printf '%sOK:%s    %-14s  Found\n' "$GREEN" "$RESET" "Linux headers"
+        return 0
+    else
+        printf '%sERROR:%s %-14s  Missing required kernel headers under /usr/include/linux\n' \
+            "$RED" "$RESET" "Linux headers"
+        FAILED=1
+        return 1
+    fi
+}
+
+need_gettext_headers() {
+    if [ -f /usr/include/libintl.h ]; then
+        printf '%sOK:%s    %-14s Found\n' "$GREEN" "$RESET" "Gettext headers"
+        return 0
+    else
+        printf '%sERROR:%s %-14s Missing (/usr/include/libintl.h)\n' \
+            "$RED" "$RESET" "Gettext headers"
+        FAILED=1
+        return 1
+    fi
 }
 
 ver_kernel() {
@@ -136,7 +216,7 @@ ver_kernel() {
 
    kver=$(uname -r | grep -E -o '^[0-9.]+')
 
-   if printf '%s\n' "$min" "$kver" | sort --version-sort --check >/dev/null 2>&1; then
+   if version_ge "$kver" "$min"; then
       printf '%sOK:%s    Linux Kernel  %-6s    >=    %s\n' "$GREEN" "$RESET" "$kver" "$min"
       return 0
    else
@@ -251,73 +331,66 @@ check_yacc_impl() {
    esac
 }
 
-check_minimal_userland() {
-   local line
-   line="$(find --version 2>&1 | head -n1 || true)"
-   case "$line" in
-      *"BusyBox"*)
-         WARNED=1
-         printf '%sWARN:%s  BusyBox-based userland detected; host compatibility may vary\n' \
-            "$MAGENTA" "$RESET"
-         ;;
-   esac
-}
 
 
 
-
-# Coreutils first because --version-sort needs Coreutils >= 7.0
+# Coreutils first because sort is used as the representative implementation check
 printf '\n%sPackages:%s\n' "$BLUE" "$RESET"
-check_coreutils                             || bail "Coreutils check failed, stop\n"
-ver_check Acl            setfacl  2.2.49    || true
-ver_check Bash           bash     3.2       || true
-ver_check Binutils       ld       2.13.1    || true
-ver_check Bison          bison    2.7       || true
-ver_check Diffutils      diff     2.8.1     || true
-ver_check Dosfstools     mkfs.fat 3.0.28    || true
-need_cmd  E2fsprogs      mkfs.ext4          || true
-ver_check Findutils      find     4.2.31    || true
-ver_check Gawk           gawk     4.0.1     || true
-ver_check GCC            gcc      7.0       || true
-ver_check "GCC (C++)"    g++      7.0       || true
-ver_check Grep           grep     2.5.1a    || true
-ver_check Gzip           gzip     1.3.12    || true
-ver_check M4             m4       1.4.10    || true
-ver_check Make           make     4.0       || true
-need_nvme_version                           || true
-ver_check Patch          patch    2.5.4     || true
-ver_check Perl           perl     5.8.8     || true
-ver_check Python         python3  3.6       || true
-ver_check Sed            sed      4.1.5     || true
-need_cmd  Shadow         useradd            || true
-ver_check Tar            tar      1.22      || true
-ver_check Texinfo        texi2any 5.0       || true
-ver_check Util-linux     lsblk    2.26      || true
-ver_check Wget           wget     1.16.0    || true
-ver_check Xz             xz       5.0.0     || true
+check_impl_tool Coreutils      sort     8.25      || true
+ver_check       Acl            setfacl  2.2.49    || true
+ver_check       Bash           bash     3.2       || true
+ver_check       Binutils       ld       2.13.1    || true
+ver_check       Bison          bison    2.7       || true
+check_impl_tool Diffutils      diff     2.8.1     || true
+ver_check       Dosfstools     mkfs.fat 3.0.28    || true
+need_cmd        E2fsprogs      mkfs.ext4          || true
+check_impl_tool Findutils      find     4.2.31    || true
+ver_check       Gawk           gawk     4.0.1     || true
+ver_check       GCC            gcc      7.0       || true
+ver_check       "GCC (C++)"    g++      7.0       || true
+need_gettext_headers
+ver_check       Grep           grep     2.5.1a    || true
+ver_check       Gzip           gzip     1.3.12    || true
+need_linux_headers
+ver_check       M4             m4       1.4.10    || true
+ver_check       Make           make     4.0       || true
+need_nvme_version                                 || true
+ver_check       Patch          patch    2.5.4     || true
+ver_check       Perl           perl     5.8.8     || true
+ver_check       Python         python3  3.6       || true
+check_impl_tool Sed            sed      4.1.5     || true
+need_cmd        Shadow         useradd            || true
+ver_check       Tar            tar      1.22      || true
+ver_check       Texinfo        texi2any 5.0       || true
+ver_check       Util-linux     lsblk    2.26      || true
+ver_check       Wget           wget     1.16.0    || true
+ver_check       Xz             xz       5.0.0     || true
 
 printf '\n%sKernel:%s\n' "$BLUE" "$RESET"
-ver_kernel 5.4                              || true
-check_unix98_pty                            || true
+ver_kernel 5.4                                    || true
+check_unix98_pty                                  || true
 
 printf '\n%sCompatibility:%s\n' "$BLUE" "$RESET"
 check_awk_impl
 check_yacc_impl
 check_sh_impl
-check_minimal_userland
 
 printf '\n%sCompiler:%s\n' "$BLUE" "$RESET"
-tmp_cpp="$(mktemp --suffix=.cpp)"
-tmp_bin="$(mktemp)"
+tmp_cpp="$(mktemp /tmp/lfs-ai-verify-cpp-XXXXXX)"
+tmp_bin="$(mktemp /tmp/lfs-ai-verify-bin-XXXXXX)"
+mv "$tmp_cpp" "${tmp_cpp}.cpp"
+tmp_cpp="${tmp_cpp}.cpp"
 rm -f "$tmp_bin"
 printf 'int main(){}\n' > "$tmp_cpp"
 
-if g++ -x c++ "$tmp_cpp" -o "$tmp_bin"; then
-   printf '%sOK:%s    g++ works\n' "$GREEN" "$RESET"
+if ! type -p g++ >/dev/null 2>&1; then
+    printf '%sERROR:%s g++ is missing\n' "$RED" "$RESET"
+    FAILED=1
+elif g++ -x c++ "$tmp_cpp" -o "$tmp_bin"; then
+    printf '%sOK:%s    g++ works\n' "$GREEN" "$RESET"
 else
-   printf '%sERROR:%s g++ does NOT work\n' "$RED" "$RESET"
-   rm -f "$tmp_cpp" "$tmp_bin"
-   FAILED=1
+    printf '%sERROR:%s g++ does NOT work\n' "$RED" "$RESET"
+    FAILED=1
 fi
 
 rm -f "$tmp_cpp" "$tmp_bin"

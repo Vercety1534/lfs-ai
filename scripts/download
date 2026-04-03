@@ -87,6 +87,49 @@ get_filename_from_url() {
     printf '%s\n' "${url##*/}"
 }
 
+wget_impl() {
+    local line
+    line="$(wget --version 2>&1 | head -n1 || true)"
+
+    case "$line" in
+        *"GNU Wget"*) printf 'gnu\n' ;;
+        *"BusyBox"*)  printf 'busybox\n' ;;
+        *)
+            if wget --help 2>&1 | grep -qi 'BusyBox'; then
+                printf 'busybox\n'
+            else
+                printf 'unknown\n'
+            fi
+            ;;
+    esac
+}
+
+download_with_wget() {
+    local url="$1"
+
+    case "$WGET_IMPL" in
+        gnu)
+            wget -q --show-progress                \
+                 --no-clobber                      \
+                 --continue                        \
+                 --directory-prefix="$LFS/sources" \
+                 --tries=1                         \
+                 --timeout=45                      \
+                 --dns-timeout=30                  \
+                 --connect-timeout=30              \
+                 --read-timeout=45                 \
+                 --retry-connrefused               \
+                 "$url"
+            ;;
+        busybox|unknown)
+            wget -c                \
+                 -P "$LFS/sources" \
+                 -T 45             \
+                 "$url"
+            ;;
+    esac
+}
+
 
 
 
@@ -101,6 +144,8 @@ printf 'Download started: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
 # For example, Fedora may be more verbose than Ubuntu or Arch.
 download_failed=0
 : > "$FAILED_LIST"
+
+WGET_IMPL="$(wget_impl)"
 
 while IFS= read -r url || [ -n "$url" ]; do
     case "$url" in
@@ -137,17 +182,7 @@ while IFS= read -r url || [ -n "$url" ]; do
         printf 'Attempt %s for %s at %s\n' \
             "$((COUNT + 1))" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
 
-        if wget -q --show-progress \
-            --no-clobber \
-            --continue \
-            --directory-prefix="$LFS/sources" \
-            --tries=1 \
-            --timeout=30 \
-            --dns-timeout=15 \
-            --connect-timeout=15 \
-            --read-timeout=30 \
-            --retry-connrefused \
-            "$url"
+        if download_with_wget "$url"
         then
             printf 'SUCCESS %s at %s\n' "$url" "$(date '+%F %T')" >> "$LOG_FILE"
             break
@@ -171,7 +206,7 @@ while IFS= read -r url || [ -n "$url" ]; do
     done
 done < "$base_dir/lists/wget-list"
 
-chown --quiet -R root:root "$LFS/sources"
+chown -R root:root "$LFS/sources" >/dev/null 2>&1
 printf 'Download completed: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
 
 if [ "$download_failed" -eq 0 ]; then
@@ -185,8 +220,8 @@ printf 'Checksum verification started: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
 printf '%sVerifying source checksums...%s\n' "$MAGENTA" "$RESET"
 cd "$LFS/sources"
 
-# Two CAcerts are not verified do to being non-versioned.
-# Hashes could changed with-out notice, resulting in checksum failures.
+# Two CAcerts are not verified due to being non-versioned.
+# Hashes could change with-out notice, resulting in checksum failures.
 checksum_failed=0
 
 while IFS= read -r line || [ -n "$line" ]; do

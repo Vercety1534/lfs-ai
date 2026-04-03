@@ -137,7 +137,7 @@ printf '%sVirtual file system verified!%s\n' "$GREEN" "$RESET"
 printf '\n%sCopying scripts...%s\n' "$MAGENTA" "$RESET"
 rm -rf "$LFS/lfs-ai"
 cp -a "$base_dir" "$LFS/lfs-ai"
-chown --quiet -R root:root "$LFS/lfs-ai"
+chown -R root:root "$LFS/lfs-ai" >/dev/null 2>&1
 printf '%sCopy successful!%s\n' "$GREEN" "$RESET"
 
 
@@ -146,13 +146,13 @@ printf '\n%sFixing permissions...%s\n' "$MAGENTA" "$RESET"
 
 for path in "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"; do
     [ -e "$path" ] || continue
-    chown --quiet --from=lfs -R root:root "$path"
+    chown -R root:root "$path"  >/dev/null 2>&1
 done
 
 case "$(uname -m)" in
     x86_64)
         if [ -e "$LFS/lib64" ]; then
-            chown --quiet --from=lfs -R root:root "$LFS/lib64"
+            chown -R root:root "$LFS/lib64"  >/dev/null 2>&1
         fi
         ;;
 esac
