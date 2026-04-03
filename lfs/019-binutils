@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase2/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/lfs/phase2"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -68,6 +69,9 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" tooldir=/usr install
+
+run_log rm -rfv /usr/pkg/"$PACKAGE"/"$VERSION"/usr/lib/lib{bfd,ctf,ctf-nobfd,gprofng,opcodes,sframe}.a \
+               "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/gprofng/"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"

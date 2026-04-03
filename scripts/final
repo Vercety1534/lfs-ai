@@ -15,8 +15,9 @@ RESET=$'\033[0m'
 
 KERNELA=6.19.11
 KERNELB=7.0-rc6
-LFS_VERSION=r13.0-17-systemd
+LFS_VERSION=r13.0-19-systemd
 
+LOG_DIR="/var/log/lfs-ai"
 
 # Error handling
 die() {
@@ -27,7 +28,7 @@ die() {
 
 # Log command
 run_log() {
-    local LOG_FILE="/logs/final.log"
+    local LOG_FILE="$LOG_DIR/final.log"
 
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
@@ -38,7 +39,7 @@ run_log() {
 }
 
 run_log_kernela() {
-    local LOG_FILE="/logs/linux-$KERNELA.log"
+    local LOG_FILE="$LOG_DIR/linux-$KERNELA.log"
 
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
@@ -49,7 +50,7 @@ run_log_kernela() {
 }
 
 run_log_kernelb() {
-    local LOG_FILE="/logs/linux-$KERNELB.log"
+    local LOG_FILE="$LOG_DIR/linux-$KERNELB.log"
 
     if "$@" >> "$LOG_FILE" 2>&1; then
         return 0
@@ -320,6 +321,11 @@ generate_locale() {
 printf '\n%sCleaning up temp files...%s\n' "$MAGENTA" "$RESET"
 rm -rf /tmp/* /tmp/.[!.]* /tmp/..?* 2>/dev/null || true
 
+for dir in /usr/lib /usr/libexec; do
+    [ -d "$dir" ] || continue
+    find "$dir" -type f -name '*.la' -delete
+done
+
 while IFS= read -r path; do
     run_log rm -rf "$path"
 done < <(find /usr -depth -name "$(uname -m)-lfs-linux-gnu*")
@@ -514,9 +520,7 @@ run_log_kernela cp -vf /lfs-ai/lists/config .config
 run_log_kernela make olddefconfig
 
 run_log_kernela make
-run_log_kernela make headers
-run_log_kernela make headers_install
-run_log_kernela make modules
+run_log_kernelb make headers_install
 run_log_kernela make modules_install
 
 run_log_kernela cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELA-lfs"
@@ -547,9 +551,7 @@ run_log_kernelb cp -vf /lfs-ai/lists/config .config
 run_log_kernelb make olddefconfig
 
 run_log_kernelb make
-run_log_kernelb make headers
 run_log_kernelb make headers_install
-run_log_kernelb make modules
 run_log_kernelb make modules_install
 
 run_log_kernelb cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELB-lfs"

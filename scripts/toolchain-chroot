@@ -13,6 +13,7 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+LOG_DIR="/var/log/lfs-ai/chroot"
 
 # Error handling
 die() {
@@ -44,8 +45,8 @@ ln -sf /run/lock /var/lock
 install -d -m 0750 /root
 install -d -m 1777 /tmp /var/tmp
 
-rm -rf /logs/chroot
-mkdir -p /logs/chroot
+rm -rf "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 printf '%sCreation successful!%s\n' "$GREEN" "$RESET"
 
 

@@ -38,13 +38,13 @@ for var in LFS; do
     require_var "$var"
 done
 
-LOG_FILE="$LFS/logs/download.log"
-
 
 # Runtime prerequisites
 [ -f "$base_dir/lists/wget-list" ] || die "Missing download list: $base_dir/lists/wget-list"
 [ -d "$LFS/sources" ] || die "Missing sources directory: $LFS/sources"
-[ -d "$LFS/logs" ] || die "Missing logs directory: $LFS/logs"
+LOG_DIR="$LFS/var/log/lfs-ai"
+LOG_FILE="$LOG_DIR/download.log"
+FAILED_LIST="$LOG_DIR/download-failures.log"
 
 
 # Archive Check
@@ -100,7 +100,6 @@ printf 'Download started: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
 # wget progress output is not fully consistent across distro versions/builds.
 # For example, Fedora may be more verbose than Ubuntu or Arch.
 download_failed=0
-FAILED_LIST="$LFS/logs/download-failures.log"
 : > "$FAILED_LIST"
 
 while IFS= read -r url || [ -n "$url" ]; do

@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/optional/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/optional"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -46,7 +47,7 @@ cd "/sources/$PACKAGE-$VERSION"
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 mkdir -p build
 cd       build
-run_log cmake -DCMAKE_INSTALL_PREFIX=/usr -G Ninja ..
+run_log cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -Wno-dev -G Ninja ..
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -68,38 +69,104 @@ cat > /etc/skel/.config/fastfetch/config.jsonc <<'EOF'
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {
-    "type": "none"
+    "type": "data",
+    "color": {
+      "1": "blue",
+      "2": "magenta"
+    },
+    "source": "\n\n\n\n\n     $1██$2╗     $1███████$2╗$1███████$2╗      $1█████$2╗ $1██$2╗\n     $1██$2║     $1██$2╔════╝$1██$2╔════╝     $1██$2╔══$1██$2╗$1██$2║\n     $1██$2║     $1█████$2╗  $1███████$2╗     $1███████$2║$1██$2║\n     $1██$2║     $1██$2╔══╝  ╚════$1██$2║     $1██$2╔══$1██$2║$1██$2║\n     $1███████$2╗$1██$2║     $1███████$2║     $1██$2║  $1██$2║$1██$2║\n     $2╚══════╝╚═╝     ╚══════╝     ╚═╝  ╚═╝╚═╝"
   },
   "display": {
     "separator": "  "
   },
   "modules": [
-    "title",
-    "os",
-    "host",
-    "kernel",
-    "uptime",
+    {
+      "type": "title",
+      "color": {
+        "user": "magenta",
+        "at": "default",
+        "host": "blue"
+      }
+    },
+    { "type": "os", "keyColor": "blue" },
+    { "type": "host", "keyColor": "blue" },
+    { "type": "board", "keyColor": "blue" },
+    { "type": "bios", "keyColor": "blue" },
+    { "type": "kernel", "keyColor": "blue" },
+    { "type": "initsystem", "keyColor": "blue" },
+    { "type": "uptime", "keyColor": "blue" },
     {
       "type": "command",
       "key": "Packages",
+      "keyColor": "blue",
       "text": "find /usr/pkg -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | awk '{print $1}'"
     },
-    "shell",
-    "terminal",
-    "cpu",
-    "gpu",
-    "memory",
-    {
-      "type": "disk",
-      "folders": "/"
-    },
-    "localip",
+    { "type": "shell", "keyColor": "blue" },
+    { "type": "terminal", "keyColor": "blue" },
+    { "type": "display", "keyColor": "blue" },
+    { "type": "cpu", "keyColor": "blue" },
+    { "type": "gpu", "keyColor": "blue" },
+    { "type": "memory", "keyColor": "blue" },
+    { "type": "swap", "keyColor": "blue" },
+    { "type": "disk", "keyColor": "blue", "folders": "/" },
+    { "type": "localip", "keyColor": "blue" },
+    { "type": "locale", "keyColor": "blue" },
     "colors"
   ]
 }
 EOF
 
-run_log cp -f /etc/skel/.config/fastfetch/config.jsonc /root/.config/fastfetch/config.jsonc
+cat > /root/.config/fastfetch/config.jsonc <<'EOF'
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "data",
+    "color": {
+      "1": "blue",
+      "2": "red"
+    },
+    "source": "\n\n\n\n\n     $1██$2╗     $1███████$2╗$1███████$2╗      $1█████$2╗ $1██$2╗\n     $1██$2║     $1██$2╔════╝$1██$2╔════╝     $1██$2╔══$1██$2╗$1██$2║\n     $1██$2║     $1█████$2╗  $1███████$2╗     $1███████$2║$1██$2║\n     $1██$2║     $1██$2╔══╝  ╚════$1██$2║     $1██$2╔══$1██$2║$1██$2║\n     $1███████$2╗$1██$2║     $1███████$2║     $1██$2║  $1██$2║$1██$2║\n     $2╚══════╝╚═╝     ╚══════╝     ╚═╝  ╚═╝╚═╝"
+  },
+  "display": {
+    "separator": "  "
+  },
+  "modules": [
+    {
+      "type": "title",
+      "color": {
+        "user": "red",
+        "at": "default",
+        "host": "blue"
+      }
+    },
+    { "type": "os", "keyColor": "blue" },
+    { "type": "host", "keyColor": "blue" },
+    { "type": "board", "keyColor": "blue" },
+    { "type": "bios", "keyColor": "blue" },
+    { "type": "kernel", "keyColor": "blue" },
+    { "type": "initsystem", "keyColor": "blue" },
+    { "type": "uptime", "keyColor": "blue" },
+    {
+      "type": "command",
+      "key": "Packages",
+      "keyColor": "blue",
+      "text": "find /usr/pkg -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | awk '{print $1}'"
+    },
+    { "type": "shell", "keyColor": "blue" },
+    { "type": "terminal", "keyColor": "blue" },
+    { "type": "display", "keyColor": "blue" },
+    { "type": "cpu", "keyColor": "blue" },
+    { "type": "gpu", "keyColor": "blue" },
+    { "type": "memory", "keyColor": "blue" },
+    { "type": "swap", "keyColor": "blue" },
+    { "type": "disk", "keyColor": "blue", "folders": "/" },
+    { "type": "localip", "keyColor": "blue" },
+    { "type": "locale", "keyColor": "blue" },
+    "colors"
+  ]
+}
+EOF
+
 printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources

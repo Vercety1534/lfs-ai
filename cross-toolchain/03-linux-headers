@@ -25,7 +25,8 @@ die() {
 
 
 # Log command
-LOG_FILE="$LFS/logs/toolchain/$PACKAGE-$VERSION.log"
+LOG_DIR="$LFS/var/log/lfs-ai/toolchain"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then

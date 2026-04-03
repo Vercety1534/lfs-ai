@@ -240,7 +240,7 @@ printf '\n%sCreating LFS directory structure...%s\n' "$MAGENTA" "$RESET"
 mkdir -p "$LFS/sources"
 chmod --quiet a+wt "$LFS/sources"
 
-mkdir -p "$LFS/etc" "$LFS/logs" "$LFS/var" "$LFS/usr/bin" "$LFS/usr/sbin" "$LFS/usr/lib"
+mkdir -p "$LFS/etc" "$LFS/var/log/lfs-ai" "$LFS/usr/bin" "$LFS/usr/sbin" "$LFS/usr/lib"
 
 for i in bin lib sbin; do
   ln -sf "usr/$i" "$LFS/$i"
@@ -274,7 +274,7 @@ printf '%sBuild user creation successful!%s\n' "$GREEN" "$RESET"
 
 printf '\n%sSetting up the environment...%s\n' "$MAGENTA" "$RESET"
 
-chown --quiet -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/logs" "$LFS/tools"
+chown --quiet -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/tools"
 
 case $(uname -m) in
   x86_64) chown --quiet lfs "$LFS/lib64" ;;

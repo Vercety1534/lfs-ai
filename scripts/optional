@@ -10,6 +10,8 @@ set -euo pipefail
 RED=$'\033[31m'
 RESET=$'\033[0m'
 
+LOG_DIR="/var/log/lfs-ai/optional"
+
 cd /lfs-ai
 
 # Error handling
@@ -18,8 +20,8 @@ die() {
     exit 1
 }
 
-rm -rf /logs/optional
-mkdir -p /logs/optional
+rm -rf "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 
 [ -d /lfs-ai/optional ] || die 'Missing /lfs-ai/optional'
 

@@ -66,7 +66,7 @@ If the installer behavior changes over time, the help output should be treated a
 Current installer help output:
 
 ```text
-Usage: ./install [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l 1|2|3|4|5|all] [-f] [--version]
+Usage: ./install [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l <arg>] [-o] [-f] [--version]
     -A        :  ALL   :   Complete install including drive partitioning
     -v        :  DEPS  :   Verify dependencies on host system
     -h        :  Help  :   Display help message
@@ -76,8 +76,9 @@ Usage: ./install [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l 1|2|3|4|5|all] [-f]
     -d        : Step 3 :   Download the required source packages
     -t        : Step 4 :   Install the toolchain
     -c        : Step 5 :   Prepare the chroot environment
-    -l #      : Step 6 :   Install LFS [Phases - 1|2|3|4|5|all]
-    -f        : Step 7 :   Install kernel, config files, and clean up build system
+    -l <arg>  : Step 6 :   Install LFS phases [1|2|3|4|5|all]
+    -o        : Step 7 :   Install cmake, fastfetch, and required dependencies (Optional)
+    -f        : Step 8 :   Install kernel, config files, and clean up build system
 
     --version :        :   Display installer version
 ```
@@ -107,7 +108,8 @@ Typical workflow progression is:
 4. install the toolchain
 5. prepare the chroot environment
 6. install the main LFS phases
-7. install the kernel, config files, and perform final cleanup
+7. optionally install cmake, fastfetch, and their required dependencies
+8. install the kernel, config files, and perform final cleanup
 
 ```bash
 ./install -s
@@ -116,6 +118,7 @@ sudo ./install -d
 sudo ./install -t
 sudo ./install -c
 sudo ./install -l all
+sudo ./install -o
 sudo ./install -f
 
 # After first boot, as root:
@@ -140,7 +143,7 @@ Pay close attention to:
 
 Review logs and command output as each stage completes.
 
-Installer logs are written under the target LFS directory during the build process, typically under `$LFS/logs`.
+Installer logs are written under the target LFS directory during the build process, typically under `$LFS/var/log/lfs-ai`.
 
 ## Verify the installed system after first boot
 

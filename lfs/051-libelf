@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase4/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/lfs/phase4"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -59,6 +60,7 @@ run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" -C libelf install
 
 run_log install -v -dm755 "/usr/pkg/$PACKAGE/$VERSION/usr/lib/pkgconfig"
 run_log install -vm644 config/libelf.pc "/usr/pkg/$PACKAGE/$VERSION/usr/lib/pkgconfig"
+run_log rm "/usr/pkg/$PACKAGE/$VERSION/usr/lib/libelf.a"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

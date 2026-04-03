@@ -36,6 +36,8 @@ for var in LFS; do
     require_var "$var"
 done
 
+LOG_DIR="$LFS/var/log/lfs-ai/toolchain"
+
 
 
 
@@ -48,9 +50,8 @@ fi
 
 source /home/lfs/.bashrc
 
-[ -d "$LFS/logs" ] || die "Missing logs directory: $LFS/logs"
-rm -rf "$LFS/logs/toolchain"
-mkdir -p "$LFS/logs/toolchain"
+rm -rf "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 
 
 # Run install scripts

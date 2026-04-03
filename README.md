@@ -88,7 +88,7 @@ See [`WORKFLOW.md`](WORKFLOW.md) for the recommended phase-based workflow.
 
 Installer logs are written under the target LFS directory during the build process. Review logs after each major step instead of assuming success.
 
-The main log directory is `$LFS/logs`.
+The main log directory is `$LFS/var/log/lfs-ai`.
 
 ## Post-install verification
 

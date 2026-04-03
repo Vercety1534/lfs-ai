@@ -515,14 +515,14 @@ graft_install_phase_pkg() {
     local phase="$1"
     local pkg="$2"
     local ver="$3"
-    local LOG_FILE="$LFS/logs/lfs"
+    local LOG_DIR="$LFS/var/log/lfs-ai/lfs"
     local GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
 
     [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
 
     printf '%sInstalling %s...%s\n' "$MAGENTA" "$pkg" "$RESET"
-    "$GRAFT_BIN" -r "$LFS" -pDV "$pkg/$ver" >> "$LOG_FILE/phase$phase/$pkg-$ver.log" 2>&1
-    "$GRAFT_BIN" -r "$LFS" -iV "$pkg/$ver" >> "$LOG_FILE/phase$phase/$pkg-$ver.log" 2>&1
+    "$GRAFT_BIN" -r "$LFS" -pDV "$pkg/$ver" >> "$LOG_DIR/phase$phase/$pkg-$ver.log" 2>&1
+    "$GRAFT_BIN" -r "$LFS" -iV "$pkg/$ver" >> "$LOG_DIR/phase$phase/$pkg-$ver.log" 2>&1
     printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 }
 
@@ -578,7 +578,7 @@ cleanup_lfs_repo_access() {
 post_final_cleanup() {
     if prompt_remove 'Do you want to remove log files?'; then
         printf '%sRemoving logs...%s\n' "$GREEN" "$RESET"
-        rm -rf "$LFS/logs"
+        rm -rf "$LFS/var/log/lfs-ai"
     else
         printf '%sSkipping log removal.%s\n' "$GREEN" "$RESET"
     fi

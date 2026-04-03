@@ -11,6 +11,8 @@ set -euo pipefail
 RED=$'\033[31m'
 RESET=$'\033[0m'
 
+LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+
 cd /lfs-ai
 
 # Error handling
@@ -19,8 +21,8 @@ die() {
     exit 1
 }
 
-rm -rf /logs/lfs/phase5
-mkdir -p /logs/lfs/phase5
+rm -rf "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 
 [ -d /lfs-ai/lfs ] || die 'Missing /lfs-ai/lfs'
 

@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -46,6 +47,7 @@ cd "/sources/$PACKAGE-$VERSION"
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log ./configure --prefix=/usr    \
                     --enable-shared  \
+                    --disable-static \
                     --docdir="/usr/share/doc/$PACKAGE-$VERSION"
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 

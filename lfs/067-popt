@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase4/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/lfs/phase4"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -44,7 +45,7 @@ tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log ./configure --prefix=/usr
+run_log ./configure --prefix=/usr --disable-static
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -56,6 +57,7 @@ run_log ./configure --bindir=/usr/bin     \
                     --disable-runuser     \
                     --disable-pylibmount  \
                     --disable-liblastlog2 \
+                    --disable-static      \
                     --without-python      \
                     ADJTIME_PATH=/var/lib/hwclock/adjtime \
                     --docdir="/usr/share/doc/$PACKAGE-$VERSION"

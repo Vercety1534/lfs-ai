@@ -23,7 +23,8 @@ die() {
 
 
 # Log command
-LOG_FILE="/logs/lfs/phase5/$PACKAGE-$VERSION.log"
+LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
     if "$@" >> "$LOG_FILE" 2>&1; then
@@ -62,6 +63,8 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+
+run_log rm -fv /usr/pkg/"$PACKAGE"/"$VERSION"/usr/lib/{libcom_err,libe2p,libext2fs,libss}.a
 
 run_log gunzip -v "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/libext2fs.info.gz"
 run_log install-info --dir-file="/usr/pkg/$PACKAGE/$VERSION/usr/share/info/dir" "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/libext2fs.info"

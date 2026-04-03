@@ -15,6 +15,7 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+WARNED=0
 FAILED=0
 
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -27,6 +28,55 @@ bail() { printf '%sERROR:%s %b\n' "$RED" "$RESET" "$1"; exit 1; }
 grep --version > /dev/null 2> /dev/null || bail "grep does not work\n"
 sed -n '' /dev/null || bail "sed does not work\n"
 sort   /dev/null || bail "sort does not work\n"
+
+check_coreutils() {
+   local line ver min="8.25"
+
+   if ! type -p sort >/dev/null 2>&1; then
+      printf '%sERROR:%s Cannot find sort (Coreutils)\n' "$RED" "$RESET"
+      FAILED=1
+      return 1
+   fi
+
+   line="$(sort --version 2>&1 | head -n1)"
+
+   case "$line" in
+      *"GNU coreutils"*)
+         ver="$(printf '%s\n' "$line" | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)"
+         if printf '%s\n' "$min" "$ver" | sort --version-sort --check >/dev/null 2>&1; then
+            printf '%sOK:%s    Coreutils     %-6s    >=    %s (GNU)\n' \
+               "$GREEN" "$RESET" "$ver" "$min"
+            return 0
+         fi
+         printf '%sERROR:%s Coreutils is TOO OLD (%s or later required)\n' \
+            "$RED" "$RESET" "$min"
+         FAILED=1
+         return 1
+         ;;
+
+      *"uutils coreutils"*)
+         ver="$(printf '%s\n' "$line" | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)"
+         WARNED=1
+         printf '%sWARN:%s  Coreutils     %-6s    uutils detected (untested for LFS-AI)\n' \
+            "$MAGENTA" "$RESET" "${ver:-unknown}"
+         return 0
+         ;;
+
+      *"BusyBox"*)
+         WARNED=1
+         printf '%sWARN:%s  Coreutils     BusyBox   detected (not GNU coreutils)\n' \
+            "$MAGENTA" "$RESET"
+         return 0
+         ;;
+
+      *)
+         printf '%sERROR:%s Unknown Coreutils implementation: %s\n' \
+            "$RED" "$RESET" "$line"
+         FAILED=1
+         return 1
+         ;;
+   esac
+}
 
 ver_check() {
    local name="$1"
@@ -113,21 +163,104 @@ check_unix98_pty() {
     fi
 }
 
-alias_check() {
-   if ! type -p "$1" >/dev/null 2>&1; then
-      printf '%sERROR:%s %-4s is missing\n' "$RED" "$RESET" "$1"
-      FAILED=1
-      return 1
+check_sh_impl() {
+   local sh_path line impl
+
+   sh_path="$(type -p sh 2>/dev/null || true)"
+
+   if [ -z "$sh_path" ]; then
+      WARNED=1
+      printf '%sWARN:%s  sh   is missing\n' "$MAGENTA" "$RESET"
+      return 0
    fi
 
-   if "$1" --version 2>&1 | grep -qi -- "$2"; then
-      printf '%sOK:%s    %-4s is %s\n' "$GREEN" "$RESET" "$1" "$2"
+   line="$(sh --version 2>&1 | head -n1 || true)"
+
+   case "$line" in
+      *"GNU bash"*)
+         printf '%sOK:%s    sh   is Bash\n' "$GREEN" "$RESET"
+         ;;
+      *"dash"*)
+         WARNED=1
+         printf '%sWARN:%s  sh   is dash, not Bash\n' "$MAGENTA" "$RESET"
+         ;;
+      *"BusyBox"*)
+         WARNED=1
+         printf '%sWARN:%s  sh   is BusyBox ash, not Bash\n' "$MAGENTA" "$RESET"
+         ;;
+      *)
+         if [ -L "$sh_path" ]; then
+            impl="$(readlink -f "$sh_path" 2>/dev/null || printf '%s' "$sh_path")"
+            WARNED=1
+            printf '%sWARN:%s  sh   is not Bash (%s)\n' "$MAGENTA" "$RESET" "$impl"
+         else
+            WARNED=1
+            printf '%sWARN:%s  sh   implementation could not be identified\n' "$MAGENTA" "$RESET"
+         fi
+         ;;
+   esac
+}
+
+check_awk_impl() {
+   local line impl
+
+   if ! type -p awk >/dev/null 2>&1; then
+      WARNED=1
+      printf '%sWARN:%s  awk  is missing\n' "$MAGENTA" "$RESET"
       return 0
-   else
-      printf '%sERROR:%s %-4s is NOT %s\n' "$RED" "$RESET" "$1" "$2"
-      FAILED=1
-      return 1
    fi
+
+   line="$(awk --version 2>&1 | head -n1 || true)"
+
+   case "$line" in
+      *"GNU Awk"*|*"GNU awk"*|*"gawk"*)
+         printf '%sOK:%s    awk  is GNU\n' "$GREEN" "$RESET"
+         ;;
+      *"BusyBox"*)
+         WARNED=1
+         printf '%sWARN:%s  awk  is BusyBox, not GNU awk\n' "$MAGENTA" "$RESET"
+         ;;
+      *)
+         impl="$(type -p awk 2>/dev/null || printf 'awk')"
+         WARNED=1
+         printf '%sWARN:%s  awk  is NOT GNU (%s)\n' "$MAGENTA" "$RESET" "$impl"
+         ;;
+   esac
+}
+
+check_yacc_impl() {
+   local line impl
+
+   if ! type -p yacc >/dev/null 2>&1; then
+      WARNED=1
+      printf '%sWARN:%s  yacc is missing\n' "$MAGENTA" "$RESET"
+      return 0
+   fi
+
+   line="$(yacc --version 2>&1 | head -n1 || true)"
+
+   case "$line" in
+      *"bison"*|*"Bison"*)
+         printf '%sOK:%s    yacc is Bison\n' "$GREEN" "$RESET"
+         ;;
+      *)
+         impl="$(type -p yacc 2>/dev/null || printf 'yacc')"
+         WARNED=1
+         printf '%sWARN:%s  yacc is NOT Bison (%s)\n' "$MAGENTA" "$RESET" "$impl"
+         ;;
+   esac
+}
+
+check_minimal_userland() {
+   local line
+   line="$(find --version 2>&1 | head -n1 || true)"
+   case "$line" in
+      *"BusyBox"*)
+         WARNED=1
+         printf '%sWARN:%s  BusyBox-based userland detected; host compatibility may vary\n' \
+            "$MAGENTA" "$RESET"
+         ;;
+   esac
 }
 
 
@@ -135,7 +268,7 @@ alias_check() {
 
 # Coreutils first because --version-sort needs Coreutils >= 7.0
 printf '\n%sPackages:%s\n' "$BLUE" "$RESET"
-ver_check Coreutils      sort     8.25      || bail "Coreutils too old, stop\n"
+check_coreutils                             || bail "Coreutils check failed, stop\n"
 ver_check Acl            setfacl  2.2.49    || true
 ver_check Bash           bash     3.2       || true
 ver_check Binutils       ld       2.13.1    || true
@@ -167,10 +300,11 @@ printf '\n%sKernel:%s\n' "$BLUE" "$RESET"
 ver_kernel 5.4                              || true
 check_unix98_pty                            || true
 
-printf '\n%sAliases:%s\n' "$BLUE" "$RESET"
-alias_check awk  GNU   || true
-alias_check yacc Bison || true
-alias_check sh   Bash  || true
+printf '\n%sCompatibility:%s\n' "$BLUE" "$RESET"
+check_awk_impl
+check_yacc_impl
+check_sh_impl
+check_minimal_userland
 
 printf '\n%sCompiler:%s\n' "$BLUE" "$RESET"
 tmp_cpp="$(mktemp --suffix=.cpp)"
@@ -201,5 +335,9 @@ if [ "$FAILED" -ne 0 ]; then
     exit 1
 fi
 
-printf '\n%sSuccess:%s Host system passed verification.\n' "$GREEN" "$RESET"
+if [ "${WARNED:-0}" -ne 0 ]; then
+    printf '\n%sSuccess:%s Host system passed verification with warnings.\n' "$GREEN" "$RESET"
+else
+    printf '\n%sSuccess:%s Host system passed verification.\n' "$GREEN" "$RESET"
+fi
 

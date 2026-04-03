@@ -11,6 +11,8 @@ set -euo pipefail
 RED=$'\033[31m'
 RESET=$'\033[0m'
 
+LOG_DIR="/var/log/lfs-ai/lfs/phase2"
+
 cd /lfs-ai
 
 # Error handling
@@ -30,8 +32,8 @@ done
 
 export ROOT_PASS
 
-rm -rf /logs/lfs/phase2
-mkdir -p /logs/lfs/phase2
+rm -rf "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 
 [ -d /lfs-ai/lfs ] || die 'Missing /lfs-ai/lfs'
 
