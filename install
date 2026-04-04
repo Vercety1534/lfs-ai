@@ -943,7 +943,7 @@ while getopts "$OPTSTRING" opt; do
 
             3)
                 run_named_phase 3
-                graft_install_phase_pkg 3 perl 5.42.1
+                graft_install_phase_pkg 3 perl 5.42.2
             ;;
 
             4)

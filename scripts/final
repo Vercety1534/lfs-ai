@@ -520,7 +520,7 @@ run_log_kernela cp -vf /lfs-ai/lists/config .config
 run_log_kernela make olddefconfig
 
 run_log_kernela make
-run_log_kernelb make headers_install
+run_log_kernela make headers_install
 run_log_kernela make modules_install
 
 run_log_kernela cp -vf arch/x86/boot/bzImage "/boot/vmlinuz-$KERNELA-lfs"
