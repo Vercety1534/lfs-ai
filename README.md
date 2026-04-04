@@ -4,9 +4,15 @@ LFS-AI is a **Linux From Scratch Automated Installer** designed to build and ins
 
 ## Status
 
-This project is under active development and still needs broader testing. It has only been tested on one system so far, so additional testers and hardware reports are important before it can be considered broadly reliable.
+This project is under active development, but it has been successfully tested across multiple host environments.
 
-Virtual machine testing is supported and encouraged, but the project is not limited to VM-only use.
+Validated install paths currently include:
+
+- Debian with GNU coreutils
+- Ubuntu with uutils
+- Alpine with BusyBox
+
+Testing has been completed in both virtual machines and on real hardware. Additional testing on more hardware, firmware, and storage layouts is still encouraged.
 
 ## What it does
 
@@ -32,13 +38,13 @@ Before using LFS-AI, make sure you have:
 - the required host dependencies installed
 - reviewed [`DEPS.md`](DEPS.md)
 - reviewed [`WORKFLOW.md`](WORKFLOW.md)
-- reviewed and verified [`settings.conf`](settings.conf) carefully
+- reviewed [`settings.conf`](settings.conf) carefully and verified its values
 
 ## Root privileges
 
 Most installer actions require root privileges.
 
-In practice, you should expect to run disk preparation, mount, chroot, build, and install steps as root. Review the help output first, then run the required workflow steps with appropriate privileges.
+In practice, you should expect to run disk preparation, mount, chroot, build, and install steps as root. Review the help output first, then run the required workflow steps with the appropriate privileges.
 
 ## Quick start
 
@@ -125,15 +131,17 @@ If something does not work as expected, include the verification log when report
 
 ## Testing and feedback
 
-Testing on additional hardware, firmware setups, storage layouts, and virtualized environments would be very helpful. If you test LFS-AI, documenting what worked, what failed, and what hardware or VM platform you used will help make the project stronger and more reliable.
+LFS-AI has been tested on Debian with GNU coreutils, Ubuntu with uutils, and Alpine with BusyBox, across both virtual machines and real hardware.
+
+Testing on additional hardware, firmware setups, storage layouts, and virtualized environments is still very helpful. If you test LFS-AI, documenting what worked, what failed, and what hardware or VM platform you used will help make the project stronger and more reliable.
 
 For the most predictable results, use a stable host distribution. During testing, random compiler internal errors and segmentation faults occurred on a rolling-release host, while the same build completed successfully on a clean Debian system on the same hardware.
 
 ## Current limitations
 
-- It has only been tested on one system so far.
-- Active development means workflow details may still change.
-- Users should verify every destructive step before running.
+- Active development means workflow details may still change
+- Users should verify every destructive step before running
+- Additional validation on more hardware and host distributions is still encouraged
 
 ## License
 

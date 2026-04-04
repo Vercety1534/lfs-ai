@@ -94,11 +94,11 @@ sudo ./install -A
 Use the automated mode only after:
 - reviewing the documentation
 - confirming host dependencies
-- reviewing, editing, and verifying [`settings.conf`](settings.conf)
+- reviewing, editing, and validating [`settings.conf`](settings.conf)
 
 ## Use a phase-based workflow when needed
 
-LFS-AI is designed around staged execution. Depending on your testing or recovery needs, you may want to run the project in phases instead of treating it as a single one-shot install.
+LFS-AI is designed around staged execution. Depending on your testing or recovery needs, you may want to run the project in phases instead of treating it as a single install run.
 
 Typical workflow progression is:
 
@@ -168,9 +168,17 @@ If you are testing LFS-AI and sharing feedback, include the `lfs-ai-verify` log 
 
 ## Test carefully
 
-This project is still under active development and has only been tested on one system so far.
+This project is still under active development, but it has been validated across multiple host environments.
 
-Treat each run as a test run until broader validation exists.
+Confirmed install paths currently include:
+
+- Debian with GNU coreutils
+- Ubuntu with uutils
+- Alpine with BusyBox
+
+Testing has been completed in both virtual machines and on real hardware.
+
+Even with that coverage, each run should still be treated carefully, especially on destructive steps or new hardware and firmware combinations.
 
 Recommended test environments include:
 
@@ -186,13 +194,14 @@ VM testing is supported and encouraged, but the project is not limited to VM-onl
 If you test LFS-AI, useful feedback includes:
 
 - host distribution and version
+- host userland/tool implementation, if unusual (for example GNU coreutils, uutils, or BusyBox)
 - firmware type
 - storage layout
 - whether the run was on hardware or in a VM
 - where the workflow failed, if it failed
 - logs or exact error messages
 
-That kind of feedback is especially valuable while the project is still being validated on more systems.
+That kind of feedback is especially valuable while the project continues to be validated on more systems.
 
 ## Re-run with caution
 

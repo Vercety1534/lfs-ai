@@ -79,6 +79,11 @@ Required kernel option:
 `CONFIG_UNIX98_PTYS=y`
 
 
+Text editor:
+
+`nano` or `vim`
+
+
 ## Required Host Headers
 
 The host system must also provide:
@@ -94,7 +99,7 @@ These are expected to provide at least:
 
 ## Compatibility Notes
 
-LFS-AI is tested primarily on GNU-based Linux hosts.
+LFS-AI has been validated on GNU-based Linux hosts as well as hosts using uutils and BusyBox.
 
 Some hosts may provide alternate implementations of common tools, such as:
 
