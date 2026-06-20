@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Meson
+# LFS-AI - Build and install Make
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=meson
-VERSION=1.10.2
+PACKAGE=make
+VERSION=4.4.1
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -44,16 +44,21 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+run_log ./configure --prefix=/usr
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
+
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps "$PWD"
+run_log make
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log pip3 install --force-reinstall --no-index --find-links dist meson --root "/usr/pkg/$PACKAGE/$VERSION" --prefix /usr
-
-run_log install -vDm644 data/shell-completions/bash/meson "/usr/pkg/$PACKAGE/$VERSION/usr/share/bash-completion/completions/meson"
-run_log install -vDm644 data/shell-completions/zsh/_meson "/usr/pkg/$PACKAGE/$VERSION/usr/share/zsh/site-functions/_meson"
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
+
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
+dir
+EOF
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"

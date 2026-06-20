@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=python
-VERSION=3.14.3
+VERSION=3.14.6
 MAJOR_VERSION=3.14
 SRC_PACKAGE=Python
 
@@ -39,7 +39,7 @@ run_log() {
 
 
 [ -f "/sources/$SRC_PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$SRC_PACKAGE-$VERSION.tar.xz"
-[ -f "/sources/Python-3.14.3-security_fixes-1.patch" ] || die "Missing patch: /sources/Python-3.14.3-security_fixes-1.patch"
+[ -f "/sources/$SRC_PACKAGE-$VERSION-openssl_4-1.patch" ] || die "Missing patch: /sources/$SRC_PACKAGE-$VERSION-openssl_4-1.patch"
 [ -f "/sources/$PACKAGE-$VERSION-docs-html.tar.bz2" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION-docs-html.tar.bz2"
 
 cd /sources
@@ -49,7 +49,7 @@ tar -xf "$SRC_PACKAGE-$VERSION.tar.xz"
 cd "/sources/$SRC_PACKAGE-$VERSION"
 
 printf '%sPatching %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log patch -Np1 -i ../Python-3.14.3-security_fixes-1.patch
+run_log patch -Np1 -i "../$SRC_PACKAGE-$VERSION-openssl_4-1.patch"
 printf '%sPatch successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

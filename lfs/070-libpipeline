@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Make
+# LFS-AI - Build and install Libpipeline
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=make
-VERSION=4.4.1
+PACKAGE=libpipeline
+VERSION=1.5.8
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_DIR="/var/log/lfs-ai/lfs/phase4"
 LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
@@ -44,7 +44,7 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+printf '\n%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log ./configure --prefix=/usr
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
@@ -55,10 +55,6 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
-
-cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
-dir
-EOF
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"

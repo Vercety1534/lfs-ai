@@ -7,7 +7,7 @@ set -euo pipefail
 
 PACKAGE=glibc
 VERSION=2.43
-TZVERSION=2026a
+TZVERSION=2026b
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -39,6 +39,7 @@ run_log() {
 
 [ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
 [ -f "/sources/glibc-fhs-1.patch" ] || die "Missing patch: /sources/glibc-fhs-1.patch"
+[ -f "/sources/$PACKAGE-$VERSION-upstream_fixes-1.patch" ] || die "Missing patch: /sources/$PACKAGE-$VERSION-upstream_fixes-1.patch"
 [ -f "/sources/tzdata$TZVERSION.tar.gz" ] || die "Missing source archive: /sources/tzdata$TZVERSION.tar.gz"
 
 cd /sources
@@ -48,11 +49,8 @@ tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sPatching %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-sed -e '/while..ancount/c\  for (; ancount > 0; --ancount)'  \
-    -e '/binary_hnok..expected/s/expected_name/name_buffer/' \
-    -i resolv/nss_dns/dns-host.c
-
 run_log patch -Np1 -i ../glibc-fhs-1.patch
+run_log patch -Np1 -i "../$PACKAGE-$VERSION-upstream_fixes-1.patch"
 printf '%sPatch successful!%s\n' "$GREEN" "$RESET"
 
 mkdir -p build
@@ -66,7 +64,7 @@ run_log ../configure --prefix=/usr                   \
                      --disable-nscd                  \
                      libc_cv_slibdir="/usr/lib"      \
                      --enable-stack-protector=strong \
-                     --enable-kernel=6.6
+                     --enable-kernel=5.10
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

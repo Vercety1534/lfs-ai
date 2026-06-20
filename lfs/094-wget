@@ -45,6 +45,13 @@ tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+NEW_LINE='#if !defined OPENSSL_NO_SSL3_METHOD '
+NEW_LINE+='&& OPENSSL_VERSION_NUMBER < 0x40000000L'
+
+sed -i "/SSL3/c $NEW_LINE" src/openssl.c
+
+unset NEW_LINE
+
 run_log ./configure --prefix=/usr      \
                     --sysconfdir=/etc  \
                     --with-ssl=openssl

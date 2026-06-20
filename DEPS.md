@@ -15,6 +15,8 @@ If dependency verification fails, install the missing packages on the host syste
 The host system should have the standard tools expected for an LFS build environment, including:
 
 `Coreutils`         >= 8.25
+OR          
+`Uutils Coreutils`  >= 0.8
 
 `Acl`               >= 2.2.49
 
@@ -34,9 +36,9 @@ The host system should have the standard tools expected for an LFS build environ
 
 `Gawk`              >= 4.0.1
 
-`GCC`               >= 7.0
+`GCC`               >= 5.4
 
-`GCC (C++)`         >= 7.0
+`GCC (C++)`         >= 5.4
 
 `Grep`              >= 2.5.1a
 
@@ -52,7 +54,7 @@ The host system should have the standard tools expected for an LFS build environ
 
 `Perl`              >= 5.8.8
 
-`Python`            >= 3.6
+`Python`            >= 3.4
 
 `Sed`               >= 4.1.5
 
@@ -71,7 +73,7 @@ The host system should have the standard tools expected for an LFS build environ
 
 Minimum kernel version:
 
-`Kernel`            >= 5.4
+`Kernel`            >= 5.10
 
 
 Required kernel option:

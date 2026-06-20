@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=nghttp2
-VERSION=1.68.1
+VERSION=1.69.0
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

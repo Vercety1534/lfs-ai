@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Util linux
+# LFS-AI - Build and install Coreutils
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=util-linux
-VERSION=2.42
+PACKAGE=coreutils
+VERSION=9.11
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_DIR="/var/log/lfs-ai/lfs/phase4"
 LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
@@ -37,6 +37,7 @@ run_log() {
 
 
 [ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
+[ -f "/sources/$PACKAGE-$VERSION-i18n-1.patch" ] || die "Missing patch: /sources/$PACKAGE-$VERSION-i18n-1.patch"
 
 cd /sources
 
@@ -44,23 +45,15 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
+printf '%sPatching %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+run_log patch -Np1 -i ../$PACKAGE-$VERSION-i18n-1.patch
+printf '%sPatch successful!%s\n' "$GREEN" "$RESET"
+
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log ./configure --bindir=/usr/bin     \
-                    --libdir=/usr/lib     \
-                    --runstatedir=/run    \
-                    --sbindir=/usr/sbin   \
-                    --disable-chfn-chsh   \
-                    --disable-login       \
-                    --disable-nologin     \
-                    --disable-su          \
-                    --disable-setpriv     \
-                    --disable-runuser     \
-                    --disable-pylibmount  \
-                    --disable-liblastlog2 \
-                    --disable-static      \
-                    --without-python      \
-                    ADJTIME_PATH=/var/lib/hwclock/adjtime \
-                    --docdir="/usr/share/doc/$PACKAGE-$VERSION"
+run_log autoreconf -fv
+run_log automake -af
+FORCE_UNSAFE_CONFIGURE=1 run_log ./configure \
+                                 --prefix=/usr
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -69,7 +62,18 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/sbin"
+run_log mv -v "/usr/pkg/$PACKAGE/$VERSION/usr/bin/chroot" "/usr/pkg/$PACKAGE/$VERSION/usr/sbin"
+
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8"
+run_log mv -v "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man1/chroot.1" "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8/chroot.8"
+sed -i 's/"1"/"8"/' "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8/chroot.8"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
+
+cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
+dir
+EOF
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Xml parser
+# LFS-AI - Build and install Sqlite
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=XML-Parser
-VERSION=2.55
+PACKAGE=sqlite
+VERSION=3.53.2
+DOC_NAME=sqlite-doc
+SRC_NAME=sqlite-autoconf
+SRC_VERSION=3530200
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -36,24 +39,36 @@ run_log() {
 }
 
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
+[ -f "/sources/$SRC_NAME-$SRC_VERSION.tar.gz" ] || die "Missing source archive: /sources/$SRC_NAME-$SRC_VERSION.tar.gz"
+[ -f "/sources/$DOC_NAME-$SRC_VERSION.tar.xz" ] || die "Missing source archive: /sources/$DOC_NAME-$SRC_VERSION.tar.xz"
 
 cd /sources
 
-rm -rf "$PACKAGE-$VERSION"
-tar -xf "$PACKAGE-$VERSION.tar.gz"
-cd "/sources/$PACKAGE-$VERSION"
+rm -rf "$SRC_NAME-$SRC_VERSION"
+tar -xf "$SRC_NAME-$SRC_VERSION.tar.gz"
+cd "/sources/$SRC_NAME-$SRC_VERSION"
+
+tar -xf ../$DOC_NAME-$SRC_VERSION.tar.xz
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log perl Makefile.PL
+run_log ./configure --prefix=/usr                                \
+                    --disable-static  \
+                    --enable-fts{4,5}                            \
+                    CPPFLAGS="-D SQLITE_ENABLE_COLUMN_METADATA=1 \
+                              -D SQLITE_ENABLE_UNLOCK_NOTIFY=1   \
+                              -D SQLITE_ENABLE_DBSTAT_VTAB=1     \
+                              -D SQLITE_SECURE_DELETE=1"
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log make
+run_log make LDFLAGS.rpath=""
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+
+run_log install -v -m755 -d "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
+run_log cp -v -R "$DOC_NAME-$SRC_VERSION"/* "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -62,4 +77,4 @@ run_log graft -iV "$PACKAGE/$VERSION"
 printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
-rm -rf "$PACKAGE-$VERSION"
+rm -rf "$SRC_NAME-$SRC_VERSION"

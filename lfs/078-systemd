@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=systemd
-VERSION=260.1
+VERSION=260.2
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

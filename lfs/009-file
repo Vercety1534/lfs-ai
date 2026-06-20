@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=file
-VERSION=5.47
+VERSION=5.48
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

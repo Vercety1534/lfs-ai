@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=libstdc++
-VERSION=15.2.0
+VERSION=16.1.0
 SRC_PACKAGE=gcc
 
 RED=$'\033[31m'

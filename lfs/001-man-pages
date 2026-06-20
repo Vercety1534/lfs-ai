@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=man-pages
-VERSION=6.17
+VERSION=6.18
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

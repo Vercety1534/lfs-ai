@@ -6,9 +6,9 @@
 set -euo pipefail
 
 PACKAGE=tcl
-VERSION=8.6.17
+VERSION=8.6.18
 MAJOR_VERSION=8.6
-PACKAGENAME=tcl8.6.17
+PACKAGENAME=tcl8.6.18
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -63,16 +63,16 @@ sed -e "s|$SRCDIR/unix|/usr/lib|" \
     -e "s|$SRCDIR|/usr/include|"  \
     -i tclConfig.sh
 
-sed -e "s|$SRCDIR/unix/pkgs/tdbc1.1.12|/usr/lib/tdbc1.1.12|" \
-    -e "s|$SRCDIR/pkgs/tdbc1.1.12/generic|/usr/include|"     \
-    -e "s|$SRCDIR/pkgs/tdbc1.1.12/library|/usr/lib/tcl$MAJOR_VERSION|"  \
-    -e "s|$SRCDIR/pkgs/tdbc1.1.12|/usr/include|"             \
-    -i pkgs/tdbc1.1.12/tdbcConfig.sh
+sed -e "s|$SRCDIR/unix/pkgs/tdbc1.1.13|/usr/lib/tdbc1.1.13|" \
+    -e "s|$SRCDIR/pkgs/tdbc1.1.13/generic|/usr/include|"     \
+    -e "s|$SRCDIR/pkgs/tdbc1.1.13/library|/usr/lib/tcl$MAJOR_VERSION|"  \
+    -e "s|$SRCDIR/pkgs/tdbc1.1.13|/usr/include|"             \
+    -i pkgs/tdbc1.1.13/tdbcConfig.sh
 
-sed -e "s|$SRCDIR/unix/pkgs/itcl4.3.4|/usr/lib/itcl4.3.4|" \
-    -e "s|$SRCDIR/pkgs/itcl4.3.4/generic|/usr/include|"    \
-    -e "s|$SRCDIR/pkgs/itcl4.3.4|/usr/include|"            \
-    -i pkgs/itcl4.3.4/itclConfig.sh
+sed -e "s|$SRCDIR/unix/pkgs/itcl4.3.7|/usr/lib/itcl4.3.7|" \
+    -e "s|$SRCDIR/pkgs/itcl4.3.7/generic|/usr/include|"    \
+    -e "s|$SRCDIR/pkgs/itcl4.3.7|/usr/include|"            \
+    -i pkgs/itcl4.3.7/itclConfig.sh
 
 unset SRCDIR
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"

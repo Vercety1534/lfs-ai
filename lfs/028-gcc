@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=gcc
-VERSION=15.2.0
+VERSION=16.1.0
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -45,8 +45,6 @@ tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-sed -i 's/char [*]q/const &/' libgomp/affinity-fmt.c
-
 case "$(uname -m)" in
     x86_64)
         sed -e '/m64=/s/lib64/lib/' \
@@ -58,19 +56,21 @@ esac
 mkdir -p build
 cd       build
 
-run_log env LD=ld ../configure             \
-                  --prefix=/usr            \
-                  --enable-languages=c,c++,cobol,fortran,go,objc,obj-c++,m2,lto \
-                  --enable-default-pie     \
-                  --enable-default-ssp     \
-                  --enable-host-pie        \
-                  --disable-multilib       \
-                  --disable-bootstrap      \
-                  --disable-fixincludes    \
-                  --enable-plugins         \
-                  --enable-lto             \
-                  --with-zstd              \
-                  --with-system-zlib
+run_log ../configure             \
+        --prefix=/usr            \
+        LD=ld                    \
+        --enable-languages=c,c++,fortran,go,objc,obj-c++,m2,lto \
+        --enable-default-pie     \
+        --enable-default-ssp     \
+        --enable-host-pie        \
+        --enable-targets=all     \
+        --disable-multilib       \
+        --disable-bootstrap      \
+        --disable-fixincludes    \
+        --enable-plugins         \
+        --enable-lto             \
+        --with-zstd              \
+        --with-system-zlib
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Groff
+# LFS-AI - Build and install Util linux
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=groff
-VERSION=1.24.1
+PACKAGE=util-linux
+VERSION=2.42.2
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_DIR="/var/log/lfs-ai/lfs/phase4"
+LOG_DIR="/var/log/lfs-ai/lfs/phase5"
 LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
@@ -36,16 +36,31 @@ run_log() {
 }
 
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
 
 cd /sources
 
 rm -rf "$PACKAGE-$VERSION"
-tar -xf "$PACKAGE-$VERSION.tar.gz"
+tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log env PAGE=letter ./configure --prefix=/usr
+run_log ./configure --bindir=/usr/bin     \
+                    --libdir=/usr/lib     \
+                    --runstatedir=/run    \
+                    --sbindir=/usr/sbin   \
+                    --disable-chfn-chsh   \
+                    --disable-login       \
+                    --disable-nologin     \
+                    --disable-su          \
+                    --disable-setpriv     \
+                    --disable-runuser     \
+                    --disable-pylibmount  \
+                    --disable-liblastlog2 \
+                    --disable-static      \
+                    --without-python      \
+                    ADJTIME_PATH=/var/lib/hwclock/adjtime \
+                    --docdir="/usr/share/doc/$PACKAGE-$VERSION"
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -55,10 +70,6 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
-
-cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
-dir
-EOF
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"

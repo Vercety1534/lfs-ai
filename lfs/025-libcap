@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=libcap
-VERSION=2.77
+VERSION=2.78
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=fastfetch
-VERSION=2.61.0
+VERSION=2.64.2
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

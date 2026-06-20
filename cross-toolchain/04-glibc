@@ -41,6 +41,7 @@ run_log() {
 
 [ -f "$LFS/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: $LFS/sources/$PACKAGE-$VERSION.tar.xz"
 [ -f "$LFS/sources/glibc-fhs-1.patch" ] || die "Missing patch: $LFS/sources/glibc-fhs-1.patch"
+[ -f "$LFS/sources/$PACKAGE-$VERSION-upstream_fixes-1.patch" ] || die "Missing patch: $LFS/sources/$PACKAGE-$VERSION-upstream_fixes-1.patch"
 
 cd "$LFS/sources"
 
@@ -61,6 +62,7 @@ case "$(uname -m)" in
 esac
 
 run_log patch -Np1 -i ../glibc-fhs-1.patch
+run_log patch -Np1 -i "../$PACKAGE-$VERSION-upstream_fixes-1.patch"
 
 mkdir -p build
 cd       build
@@ -75,7 +77,7 @@ run_log ../configure                         \
         --build="$(../scripts/config.guess)" \
         --disable-nscd                       \
         libc_cv_slibdir=/usr/lib             \
-        --enable-kernel=6.6
+        --enable-kernel=5.10
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

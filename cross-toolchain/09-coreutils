@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=coreutils
-VERSION=9.10
+VERSION=9.11
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

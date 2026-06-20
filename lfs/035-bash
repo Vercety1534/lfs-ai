@@ -39,7 +39,7 @@ run_log() {
 
 [ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
 
-for p in {001..009}; do
+for p in {001..015}; do
     [ -f "/sources/$PATCH-$p" ] || die "Missing patch: /sources/$PATCH-$p"
 done
 
@@ -50,7 +50,7 @@ tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sPatching %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-for p in {001..009}; do
+for p in {001..015}; do
     run_log patch -Np0 -i "../$PATCH-$p"
 done
 printf '%sPatch successful!%s\n' "$GREEN" "$RESET"

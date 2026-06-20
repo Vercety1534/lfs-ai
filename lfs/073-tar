@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_DIR="/var/log/lfs-ai/lfs/phase4"
 LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {

@@ -30,7 +30,7 @@ mkdir -p "$LOG_DIR"
 shopt -s nullglob
 
 found_script=0
-for script in /lfs-ai/lfs/{075..104}-*; do
+for script in /lfs-ai/lfs/{075..99}-*; do
     if [[ -f "$script" && -x "$script" ]]; then
         found_script=1
         bash "$script"

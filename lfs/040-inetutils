@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=inetutils
-VERSION=2.7
+VERSION=2.8
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

@@ -134,6 +134,80 @@ check_impl_tool() {
     esac
 }
 
+check_coreutils() {
+    local cmd="sort"
+    local label="Coreutils"
+    local impl v
+    local gnu_min="8.25"
+    local uutils_min="0.8"
+
+    impl="$(detect_impl "$cmd")"
+
+    case "$impl" in
+        gnu)
+            v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
+
+            if [ -z "$v" ]; then
+                printf '%sERROR:%s %-12s    version could not be detected\n' "$RED" "$RESET" "$label"
+                FAILED=1
+                return 1
+            fi
+
+            if version_ge "$v" "$gnu_min"; then
+                printf '%sOK:%s    %-12s    %-6s    >=    %-6s    (GNU)\n' \
+                    "$GREEN" "$RESET" "$label" "$v" "$gnu_min"
+                return 0
+            fi
+
+            printf '%sERROR:%s %-12s    GNU version is TOO OLD (%s or later required)\n' \
+                "$RED" "$RESET" "$label" "$gnu_min"
+            FAILED=1
+            return 1
+            ;;
+
+        uutils)
+            v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
+
+            if [ -z "$v" ]; then
+                printf '%sERROR:%s %-12s    uutils version could not be detected\n' "$RED" "$RESET" "$label"
+                FAILED=1
+                return 1
+            fi
+
+            if version_ge "$v" "$uutils_min"; then
+                printf '%sOK:%s    %-12s    %-6s    >=    %-6s    (uutils)\n' \
+                    "$GREEN" "$RESET" "$label" "$v" "$uutils_min"
+                return 0
+            fi
+
+            printf '%sERROR:%s %-12s    uutils version is TOO OLD (%s or later required)\n' \
+                "$RED" "$RESET" "$label" "$uutils_min"
+            FAILED=1
+            return 1
+            ;;
+
+        busybox)
+            WARNED=1
+            printf '%sWARN:%s  %-12s    BusyBox implementation detected; GNU >= %s or uutils >= %s recommended\n' \
+                "$MAGENTA" "$RESET" "$label" "$gnu_min" "$uutils_min"
+            return 0
+            ;;
+
+        missing)
+            printf '%sERROR:%s %-12s    missing\n' "$RED" "$RESET" "$label"
+            FAILED=1
+            return 1
+            ;;
+
+        *)
+            WARNED=1
+            printf '%sWARN:%s  %-12s    unknown implementation detected; GNU >= %s or uutils >= %s recommended\n' \
+                "$MAGENTA" "$RESET" "$label" "$gnu_min" "$uutils_min"
+            return 0
+            ;;
+    esac
+}
+
 ver_check() {
    local name="$1"
    local cmd="$2"
@@ -334,9 +408,10 @@ check_yacc_impl() {
 
 
 
-# Coreutils first because sort is used as the representative implementation check
+# Coreutils first because sort is used as the representative implementation/version check.
+# Accept GNU coreutils >= 8.25 or uutils coreutils >= 0.8.
 printf '\n%sPackages:%s\n' "$BLUE" "$RESET"
-check_impl_tool Coreutils      sort     8.25      || true
+check_coreutils                                   || true
 ver_check       Acl            setfacl  2.2.49    || true
 ver_check       Bash           bash     3.2       || true
 ver_check       Binutils       ld       2.13.1    || true
@@ -346,8 +421,8 @@ ver_check       Dosfstools     mkfs.fat 3.0.28    || true
 need_cmd        E2fsprogs      mkfs.ext4          || true
 check_impl_tool Findutils      find     4.2.31    || true
 ver_check       Gawk           gawk     4.0.1     || true
-ver_check       GCC            gcc      7.0       || true
-ver_check       "GCC (C++)"    g++      7.0       || true
+ver_check       GCC            gcc      5.4       || true
+ver_check       "GCC (C++)"    g++      5.4       || true
 need_gettext_headers
 ver_check       Grep           grep     2.5.1a    || true
 ver_check       Gzip           gzip     1.3.12    || true
@@ -357,7 +432,7 @@ ver_check       Make           make     4.0       || true
 need_nvme_version                                 || true
 ver_check       Patch          patch    2.5.4     || true
 ver_check       Perl           perl     5.8.8     || true
-ver_check       Python         python3  3.6       || true
+ver_check       Python         python3  3.4       || true
 check_impl_tool Sed            sed      4.1.5     || true
 need_cmd        Shadow         useradd            || true
 ver_check       Tar            tar      1.22      || true
@@ -367,7 +442,7 @@ ver_check       Wget           wget     1.16.0    || true
 ver_check       Xz             xz       5.0.0     || true
 
 printf '\n%sKernel:%s\n' "$BLUE" "$RESET"
-ver_kernel 5.4                                    || true
+ver_kernel 5.10                                   || true
 check_unix98_pty                                  || true
 
 printf '\n%sCompatibility:%s\n' "$BLUE" "$RESET"

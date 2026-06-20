@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=nss
-VERSION=3.122
+VERSION=3.125
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -66,7 +66,7 @@ cd ../dist
 
 run_log install -v -m755 -d                           "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
 run_log install -v -m755 Linux*/lib/*.so              "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
-run_log install -v -m644 Linux*/lib/{*.chk,libcrmf.a} "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
+run_log install -v -m644 Linux*/lib/*.chk             "/usr/pkg/$PACKAGE/$VERSION/usr/lib"
 
 run_log install -v -m755 -d                           "/usr/pkg/$PACKAGE/$VERSION/usr/include/nss"
 run_log cp -v -RL {public,private}/nss/*              "/usr/pkg/$PACKAGE/$VERSION/usr/include/nss"

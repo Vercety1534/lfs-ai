@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Openssl
+# LFS-AI - Build and install Meson
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=openssl
-VERSION=3.6.1
+PACKAGE=meson
+VERSION=1.11.1
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -44,25 +44,15 @@ rm -rf "$PACKAGE-$VERSION"
 tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
-printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log ./config --prefix=/usr         \
-                 --openssldir=/etc/ssl \
-                 --libdir=lib          \
-                 shared                \
-                 zlib-dynamic
-printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
-
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log make
+run_log pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps "$PWD"
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-sed -i '/INSTALL_LIBS/s/libcrypto.a libssl.a//' Makefile
-run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" MANSUFFIX=ssl install
+run_log pip3 install --force-reinstall --no-index --find-links dist meson --root "/usr/pkg/$PACKAGE/$VERSION" --prefix /usr
 
-run_log rm -rvf "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION/openssl"
-run_log mv -v "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/openssl" "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
-run_log cp -vfr doc/* "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
+run_log install -vDm644 data/shell-completions/bash/meson "/usr/pkg/$PACKAGE/$VERSION/usr/share/bash-completion/completions/meson"
+run_log install -vDm644 data/shell-completions/zsh/_meson "/usr/pkg/$PACKAGE/$VERSION/usr/share/zsh/site-functions/_meson"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

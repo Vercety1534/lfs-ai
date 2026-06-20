@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=nspr
-VERSION=4.38.2
+VERSION=4.39
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

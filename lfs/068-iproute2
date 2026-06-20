@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Packaging
+# LFS-AI - Build and install Iproute2
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=packaging
-VERSION=26.0
+PACKAGE=iproute2
+VERSION=7.1.0
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -36,20 +36,27 @@ run_log() {
 }
 
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
+[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
 
 cd /sources
 
 rm -rf "$PACKAGE-$VERSION"
-tar -xf "$PACKAGE-$VERSION.tar.gz"
+tar -xf "$PACKAGE-$VERSION.tar.xz"
 cd "/sources/$PACKAGE-$VERSION"
 
+printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+sed -i '/ARPD/d' Makefile
+rm -f man/man8/arpd.8
+printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
+
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log pip3 wheel -w dist --no-cache-dir --no-build-isolation --no-deps "$PWD"
+run_log make NETNS_RUN_DIR=/run/netns
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log pip3 install --force-reinstall --no-index --find-links dist packaging --root "/usr/pkg/$PACKAGE/$VERSION" --prefix /usr
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" SBINDIR=/usr/sbin install
+
+run_log install -vDm644 COPYING README* -t "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Texinfo
+# LFS-AI - Build and install Rsync
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=texinfo
-VERSION=7.3
+PACKAGE=rsync
+VERSION=3.4.4
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_DIR="/var/log/lfs-ai/lfs/phase5"
+LOG_DIR="/var/log/lfs-ai/lfs/phase4"
 LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
@@ -36,16 +36,37 @@ run_log() {
 }
 
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.xz"
+[ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
 
 cd /sources
 
 rm -rf "$PACKAGE-$VERSION"
-tar -xf "$PACKAGE-$VERSION.tar.xz"
+tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
+printf '%sCreating %s user...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
+
+if ! getent group rsyncd >/dev/null 2>&1; then
+    printf 'Group rsyncd does not exist. Creating it now.\n'
+    run_log groupadd -g 48 rsyncd
+    printf 'Group rsyncd created successfully.\n'
+else
+    printf 'Group rsyncd already exists.\n'
+fi
+
+if ! id rsyncd >/dev/null 2>&1; then
+    printf 'User rsyncd does not exist. Creating account...\n'
+    run_log useradd -c "rsyncd Daemon" -g rsyncd -s /bin/false -u 48 rsyncd
+    printf 'User rsyncd created successfully.\n'
+else
+    printf 'User rsyncd already exists. No action taken.\n'
+fi
+printf '%sUser creation successful!%s\n' "$GREEN" "$RESET"
+
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log ./configure --prefix=/usr
+run_log ./configure --prefix=/usr    \
+                    --disable-xxhash \
+                    --without-included-zlib
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -54,12 +75,7 @@ printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
-run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" TEXMF=/usr/share/texmf install-tex
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
-
-cat > "/usr/pkg/$PACKAGE/$VERSION/usr/share/info/.graft-exclude" << "EOF"
-dir
-EOF
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
 run_log graft -pDV "$PACKAGE/$VERSION"

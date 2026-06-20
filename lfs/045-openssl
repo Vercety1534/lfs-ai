@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install File sharedir
+# LFS-AI - Build and install Openssl
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=File-ShareDir
-VERSION=1.118
+PACKAGE=openssl
+VERSION=4.0.1
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -45,7 +45,11 @@ tar -xf "$PACKAGE-$VERSION.tar.gz"
 cd "/sources/$PACKAGE-$VERSION"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log perl Makefile.PL
+run_log ./config --prefix=/usr         \
+                 --openssldir=/etc/ssl \
+                 --libdir=lib          \
+                 shared                \
+                 zlib-dynamic
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -53,7 +57,11 @@ run_log make
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" INSTALL_LIBS= MANSUFFIX=ssl install
+
+run_log rm -rvf "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION/openssl"
+run_log mv -v "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/openssl" "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
+run_log cp -vfr doc/* "/usr/pkg/$PACKAGE/$VERSION/usr/share/doc/$PACKAGE-$VERSION"
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"

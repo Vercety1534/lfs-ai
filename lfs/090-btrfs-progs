@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LFS-AI - Build and install Libelf
+# LFS-AI - Build and install Btrfs progs
 # Copyright (c) 2026 Michael Femiak (Vercety1534)
 # SPDX-License-Identifier: MIT
 
 set -euo pipefail
 
-PACKAGE=elfutils
-VERSION=0.194
+PACKAGE=btrfs-progs
+VERSION=7.0
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -23,7 +23,7 @@ die() {
 
 
 # Log command
-LOG_DIR="/var/log/lfs-ai/lfs/phase4"
+LOG_DIR="/var/log/lfs-ai/lfs/phase5"
 LOG_FILE="$LOG_DIR/$PACKAGE-$VERSION.log"
 
 run_log() {
@@ -36,31 +36,33 @@ run_log() {
 }
 
 
-[ -f "/sources/$PACKAGE-$VERSION.tar.bz2" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.bz2"
+[ -f "/sources/$PACKAGE-v$VERSION.tar.xz" ] || die "Missing source archive: /sources/$PACKAGE-v$VERSION.tar.xz"
 
 cd /sources
 
-rm -rf "$PACKAGE-$VERSION"
-tar -xf "$PACKAGE-$VERSION.tar.bz2"
-cd "/sources/$PACKAGE-$VERSION"
+rm -rf "$PACKAGE-v$VERSION"
+tar -xf "$PACKAGE-v$VERSION.tar.xz"
+cd "/sources/$PACKAGE-v$VERSION"
 
 printf '%sConfiguring %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log ./configure --prefix=/usr        \
-                    --disable-debuginfod \
-                    --enable-libdebuginfod=dummy
+run_log ./configure --prefix=/usr           \
+                    --disable-static        \
+                    --disable-documentation
 printf '%sConfiguration successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sBuilding %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log make -C lib
-run_log make -C libelf
+run_log make
 printf '%sBuild successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sPackaging %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
-run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" -C libelf install
+run_log make DESTDIR="/usr/pkg/$PACKAGE/$VERSION" install
 
-run_log install -v -dm755 "/usr/pkg/$PACKAGE/$VERSION/usr/lib/pkgconfig"
-run_log install -vm644 config/libelf.pc "/usr/pkg/$PACKAGE/$VERSION/usr/lib/pkgconfig"
-run_log rm "/usr/pkg/$PACKAGE/$VERSION/usr/lib/libelf.a"
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man5"
+run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man8"
+
+for i in 5 8; do
+   run_log install -v Documentation/*."$i" "/usr/pkg/$PACKAGE/$VERSION/usr/share/man/man$i"
+done
 printf '%sPackage successful!%s\n' "$GREEN" "$RESET"
 
 printf '%sInstalling %s...%s\n' "$MAGENTA" "$PACKAGE" "$RESET"
@@ -69,5 +71,4 @@ run_log graft -iV "$PACKAGE/$VERSION"
 printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
 
 cd /sources
-rm -rf "$PACKAGE-$VERSION"
-
+rm -rf "$PACKAGE-v$VERSION"

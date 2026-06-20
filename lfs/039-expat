@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=expat
-VERSION=2.7.5
+VERSION=2.8.1
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'

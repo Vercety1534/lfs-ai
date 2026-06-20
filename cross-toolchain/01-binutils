@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=binutils
-VERSION=2.46.0
+VERSION=2.46.1
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -55,7 +55,7 @@ run_log ../configure --prefix="$LFS/tools"  \
                      --with-sysroot="$LFS"  \
                      --target="$LFS_TGT"    \
                      --disable-nls          \
-                     --disable-gprofng      \
+                     --enable-gprofng=no    \
                      --enable-plugins       \
                      --enable-lto           \
                      --disable-werror       \
