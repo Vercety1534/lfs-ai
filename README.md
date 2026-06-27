@@ -19,7 +19,7 @@ Testing has been completed in both virtual machines and on real hardware. Additi
 LFS-AI automates major parts of a Linux From Scratch build and installation process, including:
 
 - validating host requirements
-- preparing and checking configuration
+- preparing and validating configuration
 - partitioning and formatting target disks
 - mounting the target layout
 - downloading source packages
@@ -38,13 +38,7 @@ Before using LFS-AI, make sure you have:
 - the required host dependencies installed
 - reviewed [`DEPS.md`](DEPS.md)
 - reviewed [`WORKFLOW.md`](WORKFLOW.md)
-- reviewed [`settings.conf`](settings.conf) carefully and verified its values
-
-## Root privileges
-
-Most installer actions require root privileges.
-
-In practice, you should expect to run disk preparation, mount, chroot, build, and install steps as root. Review the help output first, then run the required workflow steps with the appropriate privileges.
+- created and reviewed `settings.conf` using the LFS-AI configuration step
 
 ## Quick start
 
@@ -62,30 +56,26 @@ less DEPS.md
 less WORKFLOW.md
 ```
 
-Check host dependencies:
+Start LFS-AI as root when running installation steps:
 
 ```bash
-./install -v
+sudo ./lfs-ai
 ```
 
-Review, edit, and validate your settings:
+The menu has the following options:
 
-```bash
-./install -s
-```
-
-This step opens [`settings.conf`](settings.conf) in an editor, reloads it, and validates the parsed configuration values.
-
-Run the installer help menu:
-
-```bash
-./install -h
-```
-
-Run the automated installer:
-
-```bash
-sudo ./install -A
+```text
+1) Verify host dependencies
+2) Configure settings
+3) Prepare host
+4) Download sources
+5) Build toolchain
+6) Build chroot
+7) Build Linux from Scratch
+8) Build optional packages
+9) Build kernel & setup system
+a) Run all
+q) Quit
 ```
 
 See [`WORKFLOW.md`](WORKFLOW.md) for the recommended phase-based workflow.
@@ -121,13 +111,12 @@ The verifier checks items such as:
 
 If something does not work as expected, include the verification log when reporting an issue.
 
-
 ## Documentation
 
 - [`README.md`](README.md) — project overview and getting started
 - [`DEPS.md`](DEPS.md) — host dependency requirements
 - [`WORKFLOW.md`](WORKFLOW.md) — recommended phase-based workflow
-- [`settings.conf`](settings.conf) — main configuration file
+- `settings.conf` — generated local configuration file
 
 ## Testing and feedback
 
@@ -140,6 +129,7 @@ For the most predictable results, use a stable host distribution. During testing
 ## Current limitations
 
 - Active development means workflow details may still change
+- UEFI/EFI systems are currently required for the full automated install flow
 - Users should verify every destructive step before running
 - Additional validation on more hardware and host distributions is still encouraged
 

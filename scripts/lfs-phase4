@@ -8,35 +8,123 @@
 
 set -euo pipefail
 
+umask 022
+
 RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
+
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
 
 LOG_DIR="/var/log/lfs-ai/lfs/phase4"
 
-cd /lfs-ai
 
 # Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }
+
+
+cd /lfs-ai || die 'Missing /lfs-ai'
+
+
+save_output_area() {
+    if [ -t 1 ]; then
+        printf '\033[s'
+    fi
+}
+
+
+clear_output_area() {
+    if [ -t 1 ]; then
+        printf '\033[u\033[J'
+    else
+        printf '\n'
+    fi
+}
+
+
+progress_bar() {
+    local current="$1"
+    local total="$2"
+    local width=30
+    local filled
+    local empty
+    local percent
+
+    percent=$((current * 100 / total))
+    filled=$((current * width / total))
+    empty=$((width - filled))
+
+    printf '['
+    printf '%*s' "$filled" '' | tr ' ' '#'
+    printf '%*s' "$empty" '' | tr ' ' '-'
+    printf '] %s%%' "$percent"
+}
+
 
 rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
 
 [ -d /lfs-ai/lfs ] || die 'Missing /lfs-ai/lfs'
 
+require_var() {
+    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
+}
+
+require_var MAKE_JOBS
+
+export MAKEFLAGS="${MAKEFLAGS:-$MAKE_JOBS}"
+export TESTSUITEFLAGS="${TESTSUITEFLAGS:-$MAKE_JOBS}"
+
 # Phase 4 install
 shopt -s nullglob
 
-found_script=0
+scripts=()
 for script in /lfs-ai/lfs/{043..074}-*; do
     if [[ -f "$script" && -x "$script" ]]; then
-        found_script=1
-        bash "$script"
+        scripts+=("$script")
     fi
 done
 
-if (( found_script != 1 )); then
+total_scripts="${#scripts[@]}"
+
+if (( total_scripts == 0 )); then
     die 'No executable phase 4 scripts found in /lfs-ai/lfs'
 fi
+
+printf '%sRunning LFS phase 4 scripts...%s\n' "$MAGENTA" "$RESET"
+printf '\n'
+
+save_output_area
+
+current=0
+for script in "${scripts[@]}"; do
+    current=$((current + 1))
+    name="$(basename "$script")"
+
+    clear_output_area
+
+    printf '%sRunning:%s  %s\n' "$BLUE" "$RESET" "$name"
+    printf '%sProgress:%s %s/%s ' "$BLUE" "$RESET" "$current" "$total_scripts"
+    progress_bar "$current" "$total_scripts"
+    printf '\n\n'
+
+    if bash "$script"; then
+        printf '\n%sCompleted:%s %s\n' "$GREEN" "$RESET" "$name"
+        sleep 1
+    else
+        printf '\n%sERROR:%s LFS phase 4 script failed: %s\n' "$RED" "$RESET" "$name" >&2
+        die "LFS phase 4 failed."
+    fi
+done
+
+clear_output_area
+
+printf '%sLFS phase 4 complete!%s\n' "$GREEN" "$RESET"
+printf '%sScripts completed:%s %s/%s\n' "$BLUE" "$RESET" "$total_scripts" "$total_scripts"

@@ -15,13 +15,16 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 base_dir="$(cd -- "$script_dir/.." && pwd)"
 SCRIPT_PATH="$(readlink -f "$0")"
 
 
-# Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }
@@ -32,39 +35,118 @@ require_var() {
     [ -n "${!1:-}" ] || die "Required variable $1 is not set."
 }
 
-for var in LFS; do
+for var in LFS MAKE_JOBS; do
     require_var "$var"
 done
 
 LOG_DIR="$LFS/var/log/lfs-ai/toolchain"
 
 
-
-
 # Verify runtime prerequisites and re-exec as lfs
 if [ "${1:-}" != "--as-lfs" ]; then
     id lfs >/dev/null 2>&1 || die 'User lfs does not exist. Run prepare first.'
     [ -f /home/lfs/.bashrc ] || die 'Missing /home/lfs/.bashrc. Run prepare first.'
-    exec runuser -u lfs -- /bin/bash "$SCRIPT_PATH" --as-lfs
+
+    exec runuser -u lfs -- env \
+        LFS="$LFS" \
+        LFS_TGT="$(uname -m)-lfs-linux-gnu" \
+        MAKE_JOBS="$MAKE_JOBS" \
+        MAKEFLAGS="$MAKE_JOBS" \
+        /bin/bash "$SCRIPT_PATH" --as-lfs
 fi
 
 source /home/lfs/.bashrc
+
+export MAKE_JOBS
+export MAKEFLAGS="$MAKE_JOBS"
+export TESTSUITEFLAGS="$MAKE_JOBS"
+
+[ -d "$LFS/sources" ] || die "Missing sources directory: $LFS/sources"
 
 rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
 
 
+save_output_area() {
+    if [ -t 1 ]; then
+        printf '\033[s'
+    fi
+}
+
+
+clear_output_area() {
+    if [ -t 1 ]; then
+        printf '\033[u\033[J'
+    else
+        printf '\n'
+    fi
+}
+
+
+progress_bar() {
+    local current="$1"
+    local total="$2"
+    local width=30
+    local filled
+    local empty
+    local percent
+
+    percent=$((current * 100 / total))
+    filled=$((current * width / total))
+    empty=$((width - filled))
+
+    printf '['
+    printf '%*s' "$filled" '' | tr ' ' '#'
+    printf '%*s' "$empty" '' | tr ' ' '-'
+    printf '] %s%%' "$percent"
+}
+
+
 # Run install scripts
-found_script=0
 shopt -s nullglob
 
+[ -d "$base_dir/cross-toolchain" ] || die "Missing toolchain script directory: $base_dir/cross-toolchain"
+
+scripts=()
 for script in "$base_dir"/cross-toolchain/*; do
     if [[ -f "$script" && -x "$script" ]]; then
-        found_script=1
-        bash "$script"
+        scripts+=("$script")
     fi
 done
 
-if (( found_script != 1 )); then
+total_scripts="${#scripts[@]}"
+
+if (( total_scripts == 0 )); then
     die "No executable toolchain scripts found in $base_dir/cross-toolchain"
 fi
+
+printf '%sRunning toolchain scripts...%s\n' "$MAGENTA" "$RESET"
+printf '\n'
+
+save_output_area
+
+current=0
+for script in "${scripts[@]}"; do
+    current=$((current + 1))
+    name="$(basename "$script")"
+
+    clear_output_area
+
+    printf '%sRunning:%s  %s\n' "$BLUE" "$RESET" "$name"
+    printf '%sProgress:%s %s/%s ' "$BLUE" "$RESET" "$current" "$total_scripts"
+    progress_bar "$current" "$total_scripts"
+    printf '\n\n'
+
+    if bash "$script"; then
+        printf '\n%sCompleted:%s %s\n' "$GREEN" "$RESET" "$name"
+        sleep 1
+    else
+        printf '\n%sERROR:%s Toolchain script failed: %s\n' "$RED" "$RESET" "$name" >&2
+        die "Toolchain failed."
+    fi
+done
+
+clear_output_area
+
+printf '%sToolchain complete!%s\n' "$GREEN" "$RESET"
+printf '%sScripts completed:%s %s/%s\n' "$BLUE" "$RESET" "$total_scripts" "$total_scripts"

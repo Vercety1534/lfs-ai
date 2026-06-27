@@ -1,0 +1,115 @@
+################################################################################
+#                               LFS-AI SETTINGS                                #
+#                                                                              #
+#                    Linux From Scratch Automated Installer                    #
+#                                                                              #
+#                      This file is an example/template.                       #
+#                                                                              #
+#           The settings wizard will generate settings.conf for you.           #
+#    You may edit settings.conf manually, but running the wizard again will    #
+#                                overwrite it.                                 #
+################################################################################
+
+################################################################################
+#                                   WARNING                                    #
+#                                                                              #
+#       These settings control disk partitioning and installation paths.       #
+#                 Incorrect values can destroy existing data.                  #
+#                                                                              #
+#    Always verify the target disk before running the prepare/install step:    #
+#                                                                              #
+#       lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,SERIAL          #
+#                                                                              #
+#   Prefer stable /dev/disk/by-id paths instead of /dev/sdX or /dev/nvmeXnY.   #
+#                    Device names can change between boots.                    #
+################################################################################
+
+################################################################################
+#                                 TARGET DISK                                  #
+################################################################################
+
+# Target disk for the LFS installation.
+#
+# Recommended:
+#   DRIVE="/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_SERIAL"
+#
+# Also accepted:
+#   DRIVE="/dev/sda"
+#   DRIVE="/dev/vda"
+#   DRIVE="/dev/nvme0n1"
+#   DRIVE="/dev/mmcblk0"
+#
+# This disk will be erased during the prepare/install step.
+DRIVE="/dev/REPLACE_ME"
+
+################################################################################
+#                               PARTITION SIZES                                #
+################################################################################
+
+# Size values must use K, M, G, or T suffixes.
+#
+# Examples:
+#   EFI_SIZE="512M"
+#   EFI_SIZE="2G"
+#   SWAP_SIZE="4G"
+#   SWAP_SIZE="32G"
+
+# EFI system partition size.
+# Minimum: 512M
+# Recommended: 1G or 2G
+EFI_SIZE="2G"
+
+# Swap partition size.
+# Minimum: 1G
+# Recommended: depends on RAM and preference.
+SWAP_SIZE="32G"
+
+################################################################################
+#                                INSTALL PATH                                  #
+################################################################################
+
+# Mount location for the LFS system.
+#
+# Must be an absolute path.
+# Must not be "/", "/boot", "/home", "/mnt", or "/root".
+LFS="/mnt/lfs"
+
+################################################################################
+#                                  PASSWORDS                                   #
+################################################################################
+
+# Password for the temporary/build LFS user.
+#
+# Do not leave this as REPLACE_ME.
+# The generated settings.conf is written with mode 600.
+LFS_PASS="REPLACE_ME"
+
+# Password for the root account inside the new LFS system.
+#
+# Do not leave this as REPLACE_ME.
+ROOT_PASS="REPLACE_ME"
+
+################################################################################
+#                          COMPILER OPTIMIZATIONS                              #
+################################################################################
+
+# Parallel build jobs.
+#
+# Conservative example:
+#   MAKE_JOBS="-j4"
+#
+# Maximum example:
+#   MAKE_JOBS="-j$(nproc)"
+#
+# The settings wizard writes a fixed value, such as "-j16", not "-j$(nproc)".
+MAKE_JOBS="-j4"
+
+# Additional compiler flags.
+#
+# Default:
+#   ADD_CFLAGS="-march=native -O2 -pipe"
+#
+# Notes:
+#   - "-march=native" is appropriate when building for this machine only.
+#   - Use more generic flags if the final system will be moved to other CPUs.
+ADD_CFLAGS="-march=native -O2 -pipe"

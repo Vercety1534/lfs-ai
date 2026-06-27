@@ -29,6 +29,7 @@ INSTALL_WARN_COUNT=0
 GENERAL_WARN_COUNT=0
 
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }

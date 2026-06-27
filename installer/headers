@@ -1,0 +1,116 @@
+# LFS-AI - Linux From Scratch Automated Installer
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
+
+# Clear console
+maybe_clear() {
+    [ "${NO_CLEAR:-0}" = "1" ] && return 0
+    if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ]; then
+        command -v clear >/dev/null 2>&1 && clear
+    fi
+}
+
+
+verify_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s        LFS-AI Host Verification        %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+wizard_screen() {
+    local title="$1"
+    local step="$2"
+
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET" >&2
+    printf '%s        LFS-AI Settings Wizard          %s\n' "$HEADER" "$RESET" >&2
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET" >&2
+    printf '\n' >&2
+    printf '%sStep %s:%s %s\n' "$SUBHEADER" "$step" "$RESET" "$title" >&2
+    printf '\n' >&2
+}
+
+
+prepare_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s        LFS-AI Host Preparation         %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+download_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s        LFS-AI Source Downloads         %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+toolchain_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s         LFS-AI Toolchain Setup         %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+chroot_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s          LFS-AI Chroot Setup           %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+lfs_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s    LFS-AI Linux from Scratch Setup     %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+optional_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s         LFS-AI Optional Setup          %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}
+
+
+final_header() {
+    maybe_clear
+
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s           LFS-AI Final Setup           %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+}

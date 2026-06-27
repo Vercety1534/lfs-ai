@@ -1,0 +1,607 @@
+# LFS-AI - Linux From Scratch Automated Installer
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
+: "${LFS_AI_ROOT:?LFS_AI_ROOT must be set before sourcing installer/settings}"
+SETTINGS_FILE="${SETTINGS_FILE:-$LFS_AI_ROOT/settings.conf}"
+
+
+ask_default() {
+    local prompt="$1"
+    local default="$2"
+    local answer
+
+    printf '%s\n' "$prompt" >&2
+    printf 'Default: %s\n' "$default" >&2
+    printf 'Press Enter to accept default, or type a new value: ' >&2
+    read -r answer
+
+    if [ -z "$answer" ]; then
+        printf '%s\n' "$default"
+    else
+        printf '%s\n' "$answer"
+    fi
+}
+
+
+ask_required() {
+    local prompt="$1"
+    local default="${2:-}"
+    local answer
+
+    while true; do
+        if [ -n "$default" ] && [ "$default" != "REPLACE_ME" ] && [ "$default" != "/dev/REPLACE_ME" ]; then
+            printf '%s [%s]: ' "$prompt" "$default" >&2
+        else
+            printf '%s: ' "$prompt" >&2
+        fi
+
+        read -r answer
+        answer="${answer:-$default}"
+
+        case "$answer" in
+            ""|REPLACE_ME|/dev/REPLACE_ME)
+                printf 'This value is required.\n' >&2
+                ;;
+            *)
+                printf '%s\n' "$answer"
+                return 0
+                ;;
+        esac
+    done
+}
+
+
+ask_password() {
+    local prompt="$1"
+    local pass1
+    local pass2
+    local stty_state
+
+    while true; do
+        stty_state="$(stty -g)"
+
+        printf '%s: ' "$prompt" >&2
+        stty -echo
+        read -r pass1
+        stty "$stty_state"
+        printf '\n' >&2
+
+        printf 'Confirm %s: ' "$prompt" >&2
+        stty_state="$(stty -g)"
+        stty -echo
+        read -r pass2
+        stty "$stty_state"
+        printf '\n' >&2
+
+        if [ -z "$pass1" ]; then
+            printf 'Password cannot be empty.\n' >&2
+        elif [ "${#pass1}" -lt 8 ]; then
+            printf 'Password must be at least 8 characters.\n' >&2
+        elif [ "$pass1" != "$pass2" ]; then
+            printf 'Passwords do not match.\n' >&2
+        else
+            printf '%s\n' "$pass1"
+            return 0
+        fi
+    done
+}
+
+
+valid_size() {
+    [[ "$1" =~ ^[0-9]+[KMGT]$ ]]
+}
+
+
+ask_size() {
+    local label="$1"
+    local default="$2"
+    local value
+
+    while true; do
+        value="$(ask_default "$label" "$default")"
+
+        if valid_size "$value"; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+
+        printf 'Invalid size. Use digits followed by uppercase K, M, G, or T. Example: 512M, 2G, 32G\n' >&2
+    done
+}
+
+
+ask_lfs_path() {
+    local default="$1"
+    local answer
+
+    while true; do
+        answer="$(ask_default "LFS mount point" "$default")"
+
+        case "$answer" in
+            ""|"/"|"/boot"|"/home"|"/mnt"|"/root")
+                printf 'Invalid LFS path: %s\n' "$answer" >&2
+                printf 'Use a dedicated path like /mnt/lfs.\n' >&2
+                ;;
+            /*)
+                printf '%s\n' "$answer"
+                return 0
+                ;;
+            *)
+                printf 'Path must be absolute, for example /mnt/lfs.\n' >&2
+                ;;
+        esac
+    done
+}
+
+
+show_disks() {
+    local disk
+    local size
+    local model
+    local serial
+    local tran
+    local i=1
+
+    wizard_screen "Select target disk" "2/8"
+
+    printf 'Available install targets:\n' >&2
+    printf '==========================\n\n' >&2
+    printf '    %-16s %-8s %-6s %-28s %s\n' "DEVICE" "SIZE" "TYPE" "MODEL" "SERIAL" >&2
+    printf '    %-16s %-8s %-6s %-28s %s\n' "------" "----" "----" "-----" "------" >&2
+
+    while read -r disk; do
+        size="$(lsblk -dnpo SIZE "$disk" 2>/dev/null || printf 'unknown')"
+        model="$(lsblk -dnpo MODEL "$disk" 2>/dev/null | sed 's/[[:space:]]*$//')"
+        serial="$(lsblk -dnpo SERIAL "$disk" 2>/dev/null | sed 's/[[:space:]]*$//')"
+        tran="$(lsblk -dnpo TRAN "$disk" 2>/dev/null | sed 's/[[:space:]]*$//')"
+
+        [ -z "$model" ] && model="unknown"
+        [ -z "$serial" ] && serial="unknown"
+        [ -z "$tran" ] && tran="unknown"
+
+        printf '%2s) %-16s %-8s %-6s %-28s %s\n' \
+            "$i" "$disk" "$size" "$tran" "$model" "$serial" >&2
+
+        DISK_CHOICES[$i]="$disk"
+        i=$((i + 1))
+    done < <(lsblk -dnpo NAME,TYPE | awk '$2 == "disk" {print $1}')
+
+    printf '\nSelect a disk to review its current layout.\n\n' >&2
+}
+
+
+resolve_disk() {
+    readlink -f -- "$1"
+}
+
+
+get_stable_disk_path() {
+    local disk="$1"
+    local link
+    local resolved
+
+    resolved="$(resolve_disk "$disk")"
+
+    # Prefer non-partition by-id links that resolve exactly to the disk.
+    # Avoid wwn/eui if a nicer model/serial path exists.
+    for link in /dev/disk/by-id/*; do
+        [ -e "$link" ] || continue
+
+        case "$link" in
+            *-part*) continue ;;
+            *wwn-*|*eui.*) continue ;;
+        esac
+
+        if [ "$(readlink -f -- "$link")" = "$resolved" ]; then
+            printf '%s\n' "$link"
+            return 0
+        fi
+    done
+
+    # Fallback: accept any by-id disk link that resolves to the disk.
+    for link in /dev/disk/by-id/*; do
+        [ -e "$link" ] || continue
+
+        case "$link" in
+            *-part*) continue ;;
+        esac
+
+        if [ "$(readlink -f -- "$link")" = "$resolved" ]; then
+            printf '%s\n' "$link"
+            return 0
+        fi
+    done
+
+    # Last fallback: return the original disk path.
+    printf '%s\n' "$disk"
+}
+
+
+show_disk_layout() {
+    local disk="$1"
+    local dev
+    local name
+    local size
+    local type
+    local fstype
+    local label
+    local mountpoint
+
+    printf '%-18s %-8s %-6s %-8s %-12s %s\n' \
+        "DEVICE" "SIZE" "TYPE" "FSTYPE" "LABEL" "MOUNTPOINT" >&2
+    printf '%-18s %-8s %-6s %-8s %-12s %s\n' \
+        "------" "----" "----" "------" "-----" "----------" >&2
+
+    while read -r dev; do
+        name="$(basename "$dev")"
+        size="$(lsblk -dnpo SIZE "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')"
+        type="$(lsblk -dnpo TYPE "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')"
+        fstype="$(lsblk -dnpo FSTYPE "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')"
+        label="$(lsblk -dnpo LABEL "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')"
+        mountpoint="$(lsblk -dnpo MOUNTPOINT "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')"
+
+        [ -z "$size" ] && size="-"
+        [ -z "$type" ] && type="-"
+        [ -z "$fstype" ] && fstype="-"
+        [ -z "$label" ] && label="-"
+        [ -z "$mountpoint" ] && mountpoint="-"
+
+        printf '%-18s %-8s %-6s %-8s %-12s %s\n' \
+            "$name" "$size" "$type" "$fstype" "$label" "$mountpoint" >&2
+    done < <(lsblk -nrpo NAME "$disk")
+}
+
+
+review_disk() {
+    local disk="$1"
+    local stable
+    local answer
+
+    stable="$(get_stable_disk_path "$disk")"
+
+    wizard_screen "Review selected disk" "2/8"
+
+    printf 'Selected install target:\n' >&2
+    printf '========================\n' >&2
+    printf 'Device      : %s\n' "$disk" >&2
+    printf 'Stable path : %s\n' "$stable" >&2
+    printf '\n' >&2
+
+    show_disk_layout "$disk"
+
+    printf '\n' >&2
+    printf 'This only saves the selected disk to settings.conf.\n' >&2
+    printf 'Partitioning will happen later during the prepare/install step.\n\n' >&2
+
+    printf 'Use this disk? [y/N]: ' >&2
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            printf '%s\n' "$stable"
+            return 0
+            ;;
+        *)
+            printf 'Disk selection cancelled.\n' >&2
+            return 1
+            ;;
+    esac
+}
+
+
+ask_disk() {
+    local default="$1"
+    local answer
+    local selected
+    local stable
+
+    while true; do
+        DISK_CHOICES=()
+        show_disks || true
+
+        if [ -n "$default" ] && [ "$default" != "/dev/REPLACE_ME" ]; then
+            printf 'Target disk number or path [%s]: ' "$default" >&2
+        else
+            printf 'Target disk number or path: ' >&2
+        fi
+
+        read -r answer
+        answer="${answer:-$default}"
+
+        case "$answer" in
+            ""|/dev/REPLACE_ME)
+                printf 'Target disk is required.\n' >&2
+                ;;
+
+            *[!0-9]*)
+                if [ -b "$answer" ]; then
+                    stable="$(review_disk "$answer")" && {
+                        printf '%s\n' "$stable"
+                        return 0
+                    }
+                else
+                    printf 'Not a valid block device: %s\n' "$answer" >&2
+                fi
+                ;;
+
+            [0-9]*)
+                selected="${DISK_CHOICES[$answer]:-}"
+
+                if [ -n "$selected" ] && [ -b "$selected" ]; then
+                    stable="$(review_disk "$selected")" && {
+                        printf '%s\n' "$stable"
+                        return 0
+                    }
+                else
+                    printf 'Invalid disk number: %s\n' "$answer" >&2
+                fi
+                ;;
+
+            *)
+                if [ -b "$answer" ]; then
+                    stable="$(review_disk "$answer")" && {
+                        printf '%s\n' "$stable"
+                        return 0
+                    }
+                else
+                    printf 'Not a valid block device: %s\n' "$answer" >&2
+                fi
+                ;;
+        esac
+    done
+}
+
+
+valid_make_jobs() {
+    [[ "$1" =~ ^-j[1-9][0-9]*$ ]]
+}
+
+
+ask_make_jobs() {
+    local default_jobs
+    local answer
+
+    default_jobs=$(( $(nproc) / 2 ))
+    [ "$default_jobs" -lt 1 ] && default_jobs=1
+
+    printf '\nParallel build jobs\n' >&2
+    printf '1) Conservative: -j%s\n' "$default_jobs" >&2
+    printf '2) Maximum:      -j%s\n' "$(nproc)" >&2
+    printf '3) Manual value\n' >&2
+    printf '\n' >&2
+
+    while true; do
+        printf 'Select build job setting [1]: ' >&2
+        read -r answer
+        answer="${answer:-1}"
+
+        case "$answer" in
+            1)
+                printf '%s\n' "-j${default_jobs}"
+                return 0
+                ;;
+            2)
+                printf '%s\n' "-j$(nproc)"
+                return 0
+                ;;
+            3)
+                while true; do
+                    printf 'Enter MAKE_JOBS, example -j4: ' >&2
+                    read -r answer
+
+                    if valid_make_jobs "$answer"; then
+                        printf '%s\n' "$answer"
+                        return 0
+                    else
+                        printf 'Invalid value. Use format like -j4.\n' >&2
+                    fi
+                done
+                ;;
+            *)
+                printf 'Invalid selection.\n' >&2
+                ;;
+        esac
+    done
+}
+
+
+ask_cflags() {
+    local default="$1"
+
+    printf '\nCompiler flags\n' >&2
+    printf 'Default is usually safe for building on this machine.\n' >&2
+    printf 'Only change this if you know what you are doing.\n\n' >&2
+
+    ask_default "ADD_CFLAGS" "$default"
+}
+
+
+confirm_settings() {
+    printf 'Settings summary\n' >&2
+    printf '================\n\n' >&2
+
+    printf 'Target disk\n' >&2
+    printf '  %s\n\n' "$DRIVE" >&2
+
+    printf 'Partitions\n' >&2
+    printf '  EFI size  : %s\n' "$EFI_SIZE" >&2
+    printf '  Swap size : %s\n\n' "$SWAP_SIZE" >&2
+
+    printf 'System\n' >&2
+    printf '  LFS mount point : %s\n' "$LFS" >&2
+    printf '  MAKE_JOBS       : %s\n' "$MAKE_JOBS" >&2
+    printf '  ADD_CFLAGS      : %s\n\n' "$ADD_CFLAGS" >&2
+
+    printf 'Passwords\n' >&2
+    printf '  LFS user : [hidden]\n' >&2
+    printf '  root     : [hidden]\n\n' >&2
+
+    printf 'Save these settings? [y/N]: ' >&2
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS]) return 0 ;;
+        *) printf 'Settings not saved.\n' >&2; return 1 ;;
+    esac
+}
+
+
+quote_value() {
+    local value="$1"
+
+    # Escape characters that are special inside double quotes.
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//\$/\\\$}"
+    value="${value//\`/\\\`}"
+
+    printf '"%s"' "$value"
+}
+
+
+write_setting() {
+    local key="$1"
+    local value="$2"
+
+    printf '%s=' "$key"
+    quote_value "$value"
+    printf '\n'
+}
+
+
+write_settings() {
+    {
+        cat <<'EOF'
+################################################################################
+#                               LFS-AI SETTINGS                                #
+#                                                                              #
+#                    Linux From Scratch Automated Installer                    #
+#                                                                              #
+#           This file was generated by the LFS-AI settings wizard.             #
+#  You may edit it manually, but running the wizard again will overwrite it.   #
+################################################################################
+
+################################################################################
+#                                   WARNING                                    #
+#                                                                              #
+#       These settings control disk partitioning and installation paths.       #
+#                 Incorrect values can destroy existing data.                  #
+#                                                                              #
+#    Always verify the target disk before running the prepare/install step:    #
+#                                                                              #
+#       lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS,MODEL,SERIAL          #
+#                                                                              #
+#   Prefer stable /dev/disk/by-id paths instead of /dev/sdX or /dev/nvmeXnY.   #
+#                    Device names can change between boots.                    #
+################################################################################
+
+################################################################################
+#                           GENERATED USER SETTINGS                            #
+################################################################################
+
+EOF
+
+        write_setting "DRIVE" "$DRIVE"
+
+        cat <<'EOF'
+
+# EFI system partition size.
+# Minimum: 512M
+EOF
+        write_setting "EFI_SIZE" "$EFI_SIZE"
+
+        cat <<'EOF'
+
+# Swap partition size.
+# Minimum: 1G
+EOF
+        write_setting "SWAP_SIZE" "$SWAP_SIZE"
+
+        cat <<'EOF'
+
+# Mount location for the LFS system.
+EOF
+        write_setting "LFS" "$LFS"
+
+        cat <<'EOF'
+
+# Password for the temporary/build LFS user.
+# This file is written with mode 600.
+EOF
+        write_setting "LFS_PASS" "$LFS_PASS"
+
+        cat <<'EOF'
+
+# Password for the root account inside the new LFS system.
+# This file is written with mode 600.
+EOF
+        write_setting "ROOT_PASS" "$ROOT_PASS"
+
+        cat <<'EOF'
+
+################################################################################
+#                           COMPILER OPTIMIZATIONS                             #
+################################################################################
+
+# Parallel build jobs.
+EOF
+        write_setting "MAKE_JOBS" "$MAKE_JOBS"
+
+        cat <<'EOF'
+
+# Additional compiler flags.
+EOF
+        write_setting "ADD_CFLAGS" "$ADD_CFLAGS"
+
+    } > "$SETTINGS_FILE"
+
+    chmod 600 "$SETTINGS_FILE"
+    printf '\nSettings written to %s\n' "$SETTINGS_FILE"
+}
+
+
+configure_settings() {
+    [ -f "$SETTINGS_FILE" ] && . "$SETTINGS_FILE"
+
+    wizard_screen "Warning" "1/8"
+    printf 'These settings control disk partitioning.\n' >&2
+    printf 'Incorrect values can destroy existing data.\n\n' >&2
+    printf 'This wizard only saves settings.conf.\n' >&2
+    printf 'Disk partitioning happens later during prepare/install.\n' >&2
+    pause
+
+    DRIVE="$(ask_disk "${DRIVE:-/dev/REPLACE_ME}")"
+
+    wizard_screen "Partition sizes" "3/8"
+    EFI_SIZE="$(ask_size "EFI partition size" "${EFI_SIZE:-2G}")"
+    printf '\n' >&2
+    SWAP_SIZE="$(ask_size "Swap partition size" "${SWAP_SIZE:-32G}")"
+
+    wizard_screen "Mount point" "4/8"
+    LFS="$(ask_lfs_path "${LFS:-/mnt/lfs}")"
+
+    wizard_screen "Passwords" "5/8"
+    LFS_PASS="$(ask_password "LFS user password")"
+    printf '\n' >&2
+    ROOT_PASS="$(ask_password "root password")"
+
+    wizard_screen "Build jobs" "6/8"
+    MAKE_JOBS="$(ask_make_jobs)"
+
+    wizard_screen "Compiler flags" "7/8"
+    ADD_CFLAGS="$(ask_cflags "${ADD_CFLAGS:--march=native -O2 -pipe}")"
+
+    wizard_screen "Review settings" "8/8"
+    confirm_settings || return 1
+    write_settings
+}

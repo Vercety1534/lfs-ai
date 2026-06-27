@@ -2,10 +2,15 @@
 
 LFS-AI requires a properly prepared Linux host system before installation.
 
-These dependencies are checked with:
+These dependencies are checked from the LFS-AI menu:
 
 ```text
-./install -v
+./lfs-ai
+```
+Then select:
+
+```text
+1) Verify host dependencies
 ```
 
 If dependency verification fails, install the missing packages on the host system before continuing. You should also review [`README.md`](README.md) and [`WORKFLOW.md`](WORKFLOW.md) before starting.
@@ -81,11 +86,6 @@ Required kernel option:
 `CONFIG_UNIX98_PTYS=y`
 
 
-Text editor:
-
-`nano` or `vim`
-
-
 ## Required Host Headers
 
 The host system must also provide:
@@ -101,7 +101,7 @@ These are expected to provide at least:
 
 ## Compatibility Notes
 
-LFS-AI has been validated on GNU-based Linux hosts as well as hosts using uutils and BusyBox.
+LFS-AI has been tested on GNU-based Linux hosts and includes compatibility handling for hosts using uutils or BusyBox-provided tools.
 
 Some hosts may provide alternate implementations of common tools, such as:
 
@@ -111,7 +111,7 @@ Some hosts may provide alternate implementations of common tools, such as:
 - non-GNU `awk`
 - missing `yacc` compatibility link
 
-These may still work, but `./install -v` may report compatibility warnings even when the host is otherwise usable.
+These may still work, but the dependency verification step may report compatibility warnings even when the host is otherwise usable.
 
 
 ## Preferred Command Links
@@ -135,6 +135,8 @@ The host system should also support:
 - UNIX 98 PTY support
 - `/dev/ptmx`
 - internet access for downloading source packages, unless all sources are already present locally
+- UEFI boot support when using the full automated install flow
+- ability to create or modify EFI boot entries with `efibootmgr`
 
 ## Recommended Host Environment
 
@@ -153,13 +155,13 @@ For best results, the host system should:
 - The automated install flow uses Limine instead of GRUB
 - Networking setup only includes ethernet; follow the BLFS book for wireless networking
 - Some BLFS packages are included during the build process to reduce post-install setup work
-- Incorrect [`settings.conf`](settings.conf) values can destroy data or overwrite the wrong disk
+- Incorrect `settings.conf` values can destroy data or overwrite the wrong disk
 
 ## Before You Start
 
 Before running the installer, make sure you have:
 
-- reviewed and edited [`settings.conf`](settings.conf)
+- created and reviewed `settings.conf` using the LFS-AI configuration step
 - verified the target disk is correct
 - confirmed you are willing to erase or modify the selected disk
 - checked that required host dependencies are installed

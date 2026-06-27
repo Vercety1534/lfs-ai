@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+# LFS-AI - Linux From Scratch Automated Installer
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+# Ensure Bash
+if [ -z "${BASH_VERSION:-}" ]; then
+    printf '\033[31mThis installer must be run with bash.\033[0m\n'
+    printf 'Use: bash %s [options]\n' "$0"
+    exit 1
+fi
+
+set -euo pipefail
+
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
+LFS_AI_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+
+# Error handling
+die() {
+    printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
+
+# Ensure root
+require_root() {
+    [ "$(id -u)" -eq 0 ] || die 'This installer must be run as root.'
+}
+
+
+# Prompt to continue
+pause() {
+    printf '\nPress Enter to continue...' >&2
+    read -r _
+}
+
+
+# Source headers
+. "$LFS_AI_ROOT/installer/headers"
+
+
+# Source settings
+. "$LFS_AI_ROOT/installer/settings"
+
+
+# Source validation
+. "$LFS_AI_ROOT/installer/validation"
+
+
+# Source phases
+. "$LFS_AI_ROOT/installer/phases"
+
+
+menu() {
+    maybe_clear
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '%s            LFS-AI Installer            %s\n' "$HEADER" "$RESET"
+    printf '%s========================================%s\n' "$MAGENTA" "$RESET"
+    printf '\n'
+    printf '     1) Verify host dependencies\n'
+    printf '     2) Configure settings\n'
+    printf '     3) Prepare host\n'
+    printf '     4) Download sources\n'
+    printf '     5) Build toolchain\n'
+    printf '     6) Build chroot\n'
+    printf '     7) Build Linux from Scratch\n'
+    printf '     8) Build optional packages\n'
+    printf '     9) Build kernel & setup system\n'
+    printf '     a) Run all\n'
+    printf '     q) Quit\n'
+    printf '\n'
+}
+
+
+run_verify() {
+    verify_header
+
+    printf '%sVerifying host dependencies...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+
+    "$LFS_AI_ROOT/scripts/verify"
+    pause
+}
+
+run_settings() {
+    configure_settings
+    pause
+}
+
+run_prepare() {
+    prepare_header
+
+    printf '%sPreparing host system...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+
+    printf 'This is a dangerous operation!\n'
+    printf 'Ensure %ssettings.conf%s was updated appropriately.\n' "$BLUE" "$RESET"
+    printf '\n'
+
+    printf 'Are you ready to continue? [y/N]: '
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            load_config
+            export DRIVE DRIVE_REAL EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS
+            "$LFS_AI_ROOT/scripts/prepare"
+            pause
+        ;;
+        *) printf 'Aborted by user.\n'; pause; return 0 ;;
+    esac
+}
+
+run_download() {
+    download_header
+
+    printf '%sDownloading sources...%s\n' "$SUBHEADER" "$RESET"
+    load_config
+    ensure_build_mounts
+    export LFS
+    "$LFS_AI_ROOT/scripts/download"
+    pause
+}
+
+run_toolchain() {
+    toolchain_header
+
+    printf '%sBuilding toolchain...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+
+    printf 'This stage modifies the target LFS system.\n'
+    printf 'Ensure prior steps were complete.\n'
+    printf '\n'
+
+    printf 'Are you ready to continue? [y/N]: '
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            load_config
+            ensure_build_mounts
+            printf '\n'
+            export LFS MAKE_JOBS
+            "$LFS_AI_ROOT/scripts/toolchain"
+            pause
+        ;;
+        *) printf 'Aborted by user.\n'; pause; return 0 ;;
+    esac
+}
+
+run_chroot() {
+    chroot_header
+
+    printf '%sPreparing the chroot environment...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+
+    printf 'This stage modifies the target LFS system.\n'
+    printf 'Ensure prior steps were complete.\n'
+    printf '\n'
+
+    printf 'Are you ready to continue? [y/N]: '
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            load_config
+            ensure_build_mounts
+            ensure_chroot_mounts
+            export LFS MAKE_JOBS
+            "$LFS_AI_ROOT/scripts/chroot"
+            pause
+        ;;
+        *) printf 'Aborted by user.\n'; pause; return 0 ;;
+    esac
+}
+
+run_lfs() {
+    lfs_header
+    printf '%sBuilding Linux from Scratch...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+    load_config
+    export ROOT_PASS MAKE_JOBS
+    lfs_main "$@"
+}
+
+run_optional() {
+    optional_header
+
+    printf '%sBuilding optional packages...%s\n' "$SUBHEADER" "$RESET"
+    printf 'This will install cmake, fastfetch, and required dependencies\n'
+    printf '\n'
+
+    printf 'This stage modifies the target LFS system.\n'
+    printf 'Ensure prior steps were complete.\n'
+    printf '\n'
+
+    printf 'Are you ready to continue? [y/N]: '
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            load_config
+            ensure_build_mounts
+            ensure_chroot_mounts
+            run_optional_stage
+            pause
+        ;;
+        *) printf 'Aborted by user.\n'; pause; return 0 ;;
+    esac
+}
+
+run_final() {
+    final_header
+
+    printf '%sSetting up final system...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+
+    printf 'This stage modifies the target LFS system.\n'
+    printf 'Ensure prior steps were complete.\n'
+    printf '\n'
+
+    printf 'Are you ready to continue? [y/N]: '
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            load_config
+            ensure_build_mounts
+            ensure_chroot_mounts
+            run_final_stage
+            post_final_cleanup
+            final_unmount_cleanup
+
+            printf '\n\n'
+            printf '%sSuccess, Linux from Scratch is installed!%s\n' "$GREEN" "$RESET"
+            printf 'After first boot, log in as root and run %slfs-ai-verify%s to verify the installation.\n' "$BLUE" "$RESET"
+            printf '\n'
+            pause
+        ;;
+        *) printf 'Aborted by user.\n'; pause; return 0 ;;
+    esac
+}
+
+run_all() {
+    verify_header
+    printf '%sVerifying host dependencies...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+    "$LFS_AI_ROOT/scripts/verify"
+    pause
+
+    run_settings
+
+    prepare_header
+    printf '%sPreparing host system...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+    printf 'This is a dangerous operation!\n'
+    printf 'The rest of the installation is automated.\n'
+    printf '\n'
+    printf 'Are you sure you wish to continue? [y/N]: '
+    read -r answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS])
+            load_config
+            export DRIVE DRIVE_REAL EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS
+            "$LFS_AI_ROOT/scripts/prepare"
+
+            download_header
+            printf '%sDownloading sources...%s\n' "$SUBHEADER" "$RESET"
+            printf '\n'
+            ensure_build_mounts
+            export LFS
+            "$LFS_AI_ROOT/scripts/download"
+
+            toolchain_header
+            printf '%sBuilding toolchain...%s\n' "$SUBHEADER" "$RESET"
+            printf '\n'
+            export LFS MAKE_JOBS
+            "$LFS_AI_ROOT/scripts/toolchain"
+
+            chroot_header
+            printf '%sPreparing the chroot environment...%s\n' "$SUBHEADER" "$RESET"
+            printf '\n'
+            ensure_chroot_mounts
+            export LFS MAKE_JOBS
+            "$LFS_AI_ROOT/scripts/chroot"
+
+            lfs_header
+            printf '%sBuilding Linux from Scratch...%s\n' "$SUBHEADER" "$RESET"
+            printf '\n'
+            export ROOT_PASS MAKE_JOBS
+            run_all_lfs_phases
+
+            optional_header
+            printf '%sBuilding optional packages...%s\n' "$SUBHEADER" "$RESET"
+            printf '\n'
+            ensure_chroot_mounts
+            run_optional_stage
+
+            final_header
+            printf '%sSetting up final system...%s\n' "$SUBHEADER" "$RESET"
+            printf '\n'
+            ensure_chroot_mounts
+            run_final_stage
+            post_final_cleanup
+            final_unmount_cleanup
+
+            printf '\n\n'
+            printf '%sSuccess, Linux from Scratch is installed!%s\n' "$GREEN" "$RESET"
+            printf 'After first boot, log in as root and run %slfs-ai-verify%s to verify the installation.\n' "$BLUE" "$RESET"
+            printf '\n'
+            pause
+        ;;
+        *) printf 'Aborted by user.\n'; pause; return 0 ;;
+    esac
+}
+
+main() {
+    require_root
+
+    while true; do
+        menu
+        printf 'Select an option: '
+        read -r choice
+
+        case "$choice" in
+            1) run_verify ;;
+            2) run_settings ;;
+            3) run_prepare ;;
+            4) run_download ;;
+            5) run_toolchain ;;
+            6) run_chroot ;;
+            7) run_lfs ;;
+            8) run_optional ;;
+            9) run_final ;;
+            a|A) run_all ;;
+            q|Q) exit 0 ;;
+            *)
+                printf '\nInvalid option: %s\n' "$choice"
+                pause
+                ;;
+        esac
+    done
+}
+
+main "$@"

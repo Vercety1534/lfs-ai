@@ -20,112 +20,92 @@ less WORKFLOW.md
 ```
 
 At minimum, make sure you understand:
+
 - what the installer does
 - which steps are destructive
 - which host tools are required
-- what values must be set in [`settings.conf`](settings.conf)
+- what values must be set in `settings.conf`
 
-## Verify host dependencies
+## Start LFS-AI
 
-Run the built-in dependency check:
-
-```bash
-./install -v
-```
-
-If dependency verification reports missing packages, install them on the host system before continuing.
-
-You should also review [`DEPS.md`](DEPS.md) if needed.
-
-## Review and edit `settings.conf`
-
-Check [`settings.conf`](settings.conf) carefully before doing anything destructive.
-
-You can review it with:
+Start LFS-AI as root when running installation steps:
 
 ```bash
-./install -s
+sudo ./lfs-ai
 ```
 
-This step opens [`settings.conf`](settings.conf) in an editor, reloads the file, and validates the parsed configuration values.
-
-Confirm all required values are correct, especially the target disk and any installation-specific settings.
-
-Do not continue until you are sure the selected drive and layout are correct.
-
-## Review installer options
-
-```bash
-./install -h
-```
-
-This shows the currently supported flags, actions, and workflow options.
-
-If the installer behavior changes over time, the help output should be treated as the source of truth.
-
-Current installer help output:
+The menu has the following options:
 
 ```text
-Usage: ./install [-A] [-v] [-h] [-s] [-p] [-d] [-t] [-c] [-l <arg>] [-o] [-f] [--version]
-    -A        :  ALL   :   Complete install including drive partitioning
-    -v        :  DEPS  :   Verify dependencies on host system
-    -h        :  Help  :   Display help message
-
-    -s        : Step 1 :   Edit settings.conf (IMPORTANT - Failure to do so could destroy your system)
-    -p        : Step 2 :   Prepare the host system and partition the drive
-    -d        : Step 3 :   Download the required source packages
-    -t        : Step 4 :   Install the toolchain
-    -c        : Step 5 :   Prepare the chroot environment
-    -l <arg>  : Step 6 :   Install LFS phases [1|2|3|4|5|all]
-    -o        : Step 7 :   Install cmake, fastfetch, and required dependencies (Optional)
-    -f        : Step 8 :   Install kernel, config files, and clean up build system
-
-    --version :        :   Display installer version
+1) Verify host dependencies
+2) Configure settings
+3) Prepare host
+4) Download sources
+5) Build toolchain
+6) Build chroot
+7) Build Linux from Scratch
+8) Build optional packages
+9) Build kernel & setup system
+a) Run all
+q) Quit
 ```
 
-## Run the installer
+## Choose an install path
 
-To run the automated workflow:
+LFS-AI can be used in two main ways:
 
-```bash
-sudo ./install -A
+- Full workflow: use `a) Run all` to run the complete guided install flow from dependency verification through final system setup.
+- Phase-based workflow: run individual menu options when testing, debugging, or resuming a specific stage.
+
+For a normal install, use the full workflow.
+
+## Run the full workflow
+
+For a normal install, select:
+
+```text
+a) Run all
 ```
 
-Use the automated mode only after:
-- reviewing the documentation
-- confirming host dependencies
-- reviewing, editing, and validating [`settings.conf`](settings.conf)
+This option runs the complete install workflow, including:
+
+1. verifying host dependencies
+2. configuring and validating `settings.conf`
+3. preparing the target disk
+4. downloading sources
+5. building the toolchain
+6. building the chroot environment
+7. building Linux From Scratch
+8. building optional packages
+9. building the kernel and final system setup
+
+You do not need to run menu options `1` or `2` first when using `a) Run all`. They are included in the full workflow.
+
+Use the full workflow only after you have:
+
+- reviewed the documentation
+- understood which steps are destructive
+- confirmed you are ready for the installer to configure settings and erase the selected target disk
 
 ## Use a phase-based workflow when needed
 
-LFS-AI is designed around staged execution. Depending on your testing or recovery needs, you may want to run the project in phases instead of treating it as a single install run.
+The numbered menu options are intended for testing, recovery, or manually running one stage at a time.
 
-Typical workflow progression is:
+Typical manual progression is:
 
-1. review and verify [`settings.conf`](settings.conf)
-2. prepare the host system and partition the drive
-3. download the required source packages
-4. install the toolchain
-5. prepare the chroot environment
-6. install the main LFS phases
-7. optionally install cmake, fastfetch, and their required dependencies
-8. install the kernel, config files, and perform final cleanup
+1. `1) Verify host dependencies`
+2. `2) Configure settings`
+3. `3) Prepare host`
+4. `4) Download sources`
+5. `5) Build toolchain`
+6. `6) Build chroot`
+7. `7) Build Linux from Scratch`
+8. `8) Build optional packages`
+9. `9) Build kernel & setup system`
 
-```bash
-./install -s
-sudo ./install -p
-sudo ./install -d
-sudo ./install -t
-sudo ./install -c
-sudo ./install -l all
-sudo ./install -o
-sudo ./install -f
+Use this approach when you want to inspect logs between stages, repeat a specific step, or debug a failed install.
 
-# After first boot, as root:
-lfs-ai-verify
-```
-
-Refer to `./install -h` and the repository scripts for the currently supported phase controls.
+Do not re-run destructive steps casually. In particular, the prepare step should always be reviewed carefully before repeating it.
 
 ## Watch output and logs carefully
 
@@ -164,7 +144,6 @@ Recommended checks after first boot:
 - review any reported warnings or failures before treating the install as complete
 
 If you are testing LFS-AI and sharing feedback, include the `lfs-ai-verify` log along with your hardware or VM details.
-
 
 ## Test carefully
 
@@ -205,6 +184,6 @@ That kind of feedback is especially valuable while the project continues to be v
 
 ## Re-run with caution
 
-Some steps may be safe to re-run, but `./install -p` should always be reviewed carefully before repeating it.
+Some steps may be safe to re-run, but the prepare step should always be reviewed carefully before repeating it.
 
-Always confirm [`settings.conf`](settings.conf) after a reboot. Systems do not always enumerate drives in the same order.
+Always confirm `settings.conf` and the selected target disk after a reboot.

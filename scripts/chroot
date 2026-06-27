@@ -15,12 +15,15 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 base_dir="$(cd -- "$script_dir/.." && pwd)"
 
 
-# Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }

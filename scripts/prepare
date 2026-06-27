@@ -15,8 +15,15 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 base_dir="$(cd -- "$script_dir/.." && pwd)"
+
+
+# Source headers
+. "$base_dir/installer/headers"
 
 
 # Error handling
@@ -27,17 +34,29 @@ die() {
 
 
 # Function to prompt user to continue
-prompt_confirm() {
-    local prompt="${1:-Continue?}"
+confirm_destructive_action() {
+    prepare_header
 
-    while true; do
-        read -r -p "$prompt [y/N]: " REPLY
-        case "$REPLY" in
-            [yY]|[yY][eE][sS]) return 0 ;;
-            [nN]|[nN][oO]|"") die "Aborted by user." ;;
-            *) printf '%sERROR:%s invalid input\n' "$RED" "$RESET" ;;
-        esac
-    done
+    printf '%sInstallation configuration:%s\n' "$MAGENTA" "$RESET"
+    printf 'Drive:           %s%s%s\n' "$BLUE" "$DRIVE" "$RESET"
+    printf 'Resolved drive:  %s%s%s\n' "$BLUE" "$DRIVE_REAL" "$RESET"
+    printf 'EFI partition:   %s%s%s\n' "$BLUE" "$EFI" "$RESET"
+    printf 'SWAP partition:  %s%s%s\n' "$BLUE" "$SWAP" "$RESET"
+    printf 'ROOT partition:  %s%s%s\n' "$BLUE" "$MAIN" "$RESET"
+    printf 'EFI size:        %s%s%s\n' "$BLUE" "$EFI_SIZE" "$RESET"
+    printf 'Swap size:       %s%s%s\n' "$BLUE" "$SWAP_SIZE" "$RESET"
+    printf 'Mount point:     %s%s%s\n' "$BLUE" "$LFS" "$RESET"
+    printf 'MAKE_JOBS:       %s%s%s\n' "$BLUE" "$MAKE_JOBS" "$RESET"
+    printf '\n'
+
+    printf '%sDANGER:%s This will erase and repartition the target disk.\n' "$RED" "$RESET"
+    printf 'Configured drive : %s\n' "$DRIVE"
+    printf 'Resolved drive   : %s\n' "$DRIVE_REAL"
+    printf '\nType ERASE to continue: '
+
+    read -r answer
+
+    [ "$answer" = "ERASE" ] || die "Aborted by user."
 }
 
 
@@ -46,9 +65,11 @@ require_var() {
     [ -n "${!1:-}" ] || die "Required variable $1 is not set."
 }
 
-for var in DRIVE EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS; do
+
+for var in DRIVE DRIVE_REAL EFI SWAP MAIN EFI_SIZE SWAP_SIZE LFS LFS_PASS MAKE_JOBS; do
     require_var "$var"
 done
+
 
 get_parent_disk() {
     local dev="$1"
@@ -64,6 +85,7 @@ get_parent_disk() {
     fi
 }
 
+
 ensure_not_system_disk() {
     local root_src boot_src efi_src
     local root_disk boot_disk efi_disk
@@ -76,43 +98,55 @@ ensure_not_system_disk() {
     boot_disk="$(get_parent_disk "$boot_src" || true)"
     efi_disk="$(get_parent_disk "$efi_src" || true)"
 
-    [ -z "$root_disk" ] || [ "$DRIVE" != "$root_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted / filesystem: $DRIVE"
-    [ -z "$boot_disk" ] || [ "$DRIVE" != "$boot_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted /boot filesystem: $DRIVE"
-    [ -z "$efi_disk" ] || [ "$DRIVE" != "$efi_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted /boot/efi filesystem: $DRIVE"
+    [ -z "$root_disk" ] || [ "$DRIVE_REAL" != "$root_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted / filesystem: $DRIVE"
+    [ -z "$boot_disk" ] || [ "$DRIVE_REAL" != "$boot_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted /boot filesystem: $DRIVE"
+    [ -z "$efi_disk" ] || [ "$DRIVE_REAL" != "$efi_disk" ] || die "Refusing to use DRIVE because it backs the currently mounted /boot/efi filesystem: $DRIVE"
 }
 
+
 release_drive_usage() {
-    local part mountpoint
+    local part
+    local mountpoint
     local swap_changes=0
     local mount_changes=0
 
     ensure_not_system_disk
 
-    if grep -q "^$SWAP[[:space:]]" /proc/swaps; then
+    if awk -v swap="$SWAP" '$1 == swap { found = 1 } END { exit !found }' /proc/swaps; then
         printf '  - Disabling swap: %s\n' "$SWAP"
         swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
         swap_changes=1
     fi
 
-    while read -r part mountpoint || [ -n "$part" ]; do
+    while read -r part || [ -n "$part" ]; do
         [ -n "$part" ] || continue
+
         case "$part" in
-            "$DRIVE") continue ;;
-            "$DRIVE"[0-9]*|"$DRIVE"p[0-9]*) ;;
-            *) continue ;;
-        esac
-        case "$mountpoint" in
-            /*)
-                printf '  - Unmounting %s from %s\n' "$part" "$mountpoint"
-                umount "$part" 2>/dev/null || umount -l "$part" || die "Failed to unmount $part"
-                mount_changes=1
+            "$DRIVE_REAL")
+                continue
+                ;;
+            "$DRIVE_REAL"[0-9]*|"$DRIVE_REAL"p[0-9]*)
+                ;;
+            *)
+                continue
                 ;;
         esac
-    done < <(lsblk -nrpo NAME,MOUNTPOINT "$DRIVE")
 
-    grep -q "^$SWAP[[:space:]]" /proc/swaps && die "Swap is still active on $SWAP"
+        while read -r mountpoint || [ -n "$mountpoint" ]; do
+            [ -n "$mountpoint" ] || continue
 
-    partprobe "$DRIVE" >/dev/null 2>&1 || true
+            printf '  - Unmounting %s from %s\n' "$part" "$mountpoint"
+            umount "$mountpoint" 2>/dev/null || umount -l "$mountpoint" || die "Failed to unmount $mountpoint"
+            mount_changes=1
+        done < <(findmnt -rn --source "$part" -o TARGET)
+
+    done < <(lsblk -nrpo NAME "$DRIVE_REAL")
+
+    if awk -v swap="$SWAP" '$1 == swap { found = 1 } END { exit !found }' /proc/swaps; then
+        die "Swap is still active on $SWAP"
+    fi
+
+    partprobe "$DRIVE_REAL" >/dev/null 2>&1 || true
     udevadm settle >/dev/null 2>&1 || true
 
     [ "$swap_changes" -eq 0 ] && [ "$mount_changes" -eq 0 ] && return 1
@@ -122,17 +156,17 @@ release_drive_usage() {
 
 # Wipe Drive
 erase_drive() {
-    case "$DRIVE" in
+    case "$DRIVE_REAL" in
         /dev/nvme*)
-            nvme format --force "$DRIVE" -s 2 -n 1 >/dev/null 2>&1 || true
-            wipefs -afq "$DRIVE"
+            nvme format --force "$DRIVE_REAL" -s 2 -n 1 >/dev/null 2>&1 || true
+            wipefs -afq "$DRIVE_REAL"
             ;;
         /dev/sd*|/dev/vd*|/dev/xvd*|/dev/mmcblk*)
-            blkdiscard -f "$DRIVE" >/dev/null 2>&1 || true
-            wipefs -afq "$DRIVE"
+            blkdiscard -f "$DRIVE_REAL" >/dev/null 2>&1 || true
+            wipefs -afq "$DRIVE_REAL"
             ;;
         *)
-            die "Unsupported drive type: $DRIVE"
+            die "Unsupported drive type: $DRIVE_REAL"
             ;;
     esac
 }
@@ -157,24 +191,10 @@ grant_lfs_repo_access() {
 }
 
 
-
-
-# Confirm installation configuration
-printf '\n%sInstallation configuration:%s\n' "$MAGENTA" "$RESET"
-printf 'Drive:           %s%s%s\n' "$BLUE" "$DRIVE" "$RESET"
-printf 'EFI partition:   %s%s%s\n' "$BLUE" "$EFI" "$RESET"
-printf 'SWAP partition:  %s%s%s\n' "$BLUE" "$SWAP" "$RESET"
-printf 'ROOT partition:  %s%s%s\n' "$BLUE" "$MAIN" "$RESET"
-printf 'EFI size:        %s%s%s\n' "$BLUE" "$EFI_SIZE" "$RESET"
-printf 'Swap size:       %s%s%s\n' "$BLUE" "$SWAP_SIZE" "$RESET"
-printf 'Mount point:     %s%s%s\n' "$BLUE" "$LFS" "$RESET"
-printf 'MAKE_JOBS:       %s%s%s\n' "$BLUE" "$MAKE_JOBS" "$RESET"
-
-
 # Execute disk preparation
-printf '%sPreparing drive...%s\n\n' "$MAGENTA" "$RESET"
-printf '%sWARNING:%s This will erase all data on %s\n' "$RED" "$RESET" "$DRIVE"
-prompt_confirm "Proceed with disk wipe and partitioning?"
+command -v setfacl >/dev/null 2>&1 || die "setfacl is required but was not found."
+confirm_destructive_action
+prepare_header
 
 printf '%sReleasing target drive...%s\n' "$MAGENTA" "$RESET"
 if release_drive_usage; then
@@ -184,15 +204,22 @@ else
     printf '%sTarget drive already clear.%s\n' "$GREEN" "$RESET"
 fi
 
+if findmnt -rn --target "$LFS" >/dev/null 2>&1; then
+    die "Mount point is still mounted after release step: $LFS"
+fi
+
 printf '\n%sWiping target drive...%s\n' "$MAGENTA" "$RESET"
 erase_drive
 printf '%sWipe successful!%s\n' "$GREEN" "$RESET"
 
-
 # Create EFI | SWAP | 'Remaining' Linux partition
 printf '\n%sPartitioning drive...%s\n' "$MAGENTA" "$RESET"
-printf 'label:gpt\n' | sfdisk -q --force --wipe always "$DRIVE"
-printf "size=$EFI_SIZE,type=uefi\n size=$SWAP_SIZE,type=swap\n size=+,type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n" | sfdisk -q --force "$DRIVE"
+printf 'label:gpt\n' | sfdisk -q --force --wipe always "$DRIVE_REAL"
+printf "size=$EFI_SIZE,type=uefi\nsize=$SWAP_SIZE,type=swap\nsize=+,type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709\n" \
+    | sfdisk -q --force "$DRIVE_REAL"
+
+partprobe "$DRIVE_REAL" >/dev/null 2>&1 || true
+udevadm settle >/dev/null 2>&1 || true
 
 for _ in 1 2 3 4 5; do
     [ -b "$EFI" ] && [ -b "$SWAP" ] && [ -b "$MAIN" ] && break
@@ -207,9 +234,9 @@ printf '%sPartitioning successful!%s\n' "$GREEN" "$RESET"
 
 # Create File Systems
 printf '\n%sFormatting partitions...%s\n' "$MAGENTA" "$RESET"
-mkfs.fat -F 32 -n EFI "$EFI" > /dev/null 2>&1
-mkswap -L SWAP "$SWAP" > /dev/null 2>&1
-mkfs.ext4 -F -L LFS "$MAIN"  > /dev/null 2>&1
+mkfs.fat -F 32 -n EFI "$EFI" >/dev/null
+mkswap -L SWAP "$SWAP" >/dev/null
+mkfs.ext4 -F -L LFS "$MAIN" >/dev/null
 printf '%sFormat successful!%s\n' "$GREEN" "$RESET"
 
 printf '\n%sMounting partitions...%s\n' "$MAGENTA" "$RESET"
@@ -243,11 +270,11 @@ chmod a+wt "$LFS/sources" >/dev/null 2>&1
 mkdir -p "$LFS/etc" "$LFS/var/log/lfs-ai" "$LFS/usr/bin" "$LFS/usr/sbin" "$LFS/usr/lib"
 
 for i in bin lib sbin; do
-  ln -sf "usr/$i" "$LFS/$i"
+    ln -sf "usr/$i" "$LFS/$i"
 done
 
-case $(uname -m) in
-  x86_64) mkdir -p "$LFS/lib64" ;;
+case "$(uname -m)" in
+    x86_64) mkdir -p "$LFS/lib64" ;;
 esac
 
 mkdir -p "$LFS/tools"
@@ -266,18 +293,21 @@ fi
 if ! id -u lfs >/dev/null 2>&1; then
     printf '  - Creating user: lfs\n'
     useradd -s /bin/bash -g lfs -m -k /dev/null lfs
-    printf 'lfs:%s\n' "$LFS_PASS" | chpasswd
 else
     printf '  - Using existing user: lfs\n'
 fi
+
+printf '  - Setting password for user: lfs\n'
+printf 'lfs:%s\n' "$LFS_PASS" | chpasswd
+
 printf '%sBuild user creation successful!%s\n' "$GREEN" "$RESET"
 
 printf '\n%sSetting up the environment...%s\n' "$MAGENTA" "$RESET"
 
-chown -R lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/tools" >/dev/null 2>&1
+chown -R lfs:lfs "$LFS/usr" "$LFS/var" "$LFS/etc" "$LFS/tools" >/dev/null 2>&1
 
-case $(uname -m) in
-  x86_64) chown lfs "$LFS/lib64" >/dev/null 2>&1 ;;
+case "$(uname -m)" in
+    x86_64) chown lfs:lfs "$LFS/lib64" >/dev/null 2>&1 ;;
 esac
 
 grant_lfs_repo_access "$base_dir"

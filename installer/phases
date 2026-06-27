@@ -1,0 +1,289 @@
+# LFS-AI - Linux From Scratch Automated Installer
+# Copyright (c) 2026 Michael Femiak (Vercety1534)
+# SPDX-License-Identifier: MIT
+
+RED=$'\033[31m'
+GREEN=$'\033[32m'
+BLUE=$'\033[34m'
+MAGENTA=$'\033[35m'
+RESET=$'\033[0m'
+
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
+
+confirm_prompt() {
+    local prompt="${1:-Continue?}"
+    local answer
+
+    while true; do
+        printf '%s [y/N]: ' "$prompt" >&2
+        read -r answer
+
+        case "$answer" in
+            [yY]|[yY][eE][sS]) return 0 ;;
+            [nN]|[nN][oO]|"") return 1 ;;
+            *) printf '%sERROR:%s invalid input\n' "$RED" "$RESET" >&2 ;;
+        esac
+    done
+}
+
+
+# Phase wrapper
+run_in_lfs_chroot() {
+    chroot "$LFS" /usr/bin/env -i \
+        HOME=/root \
+        TERM="${TERM:-xterm}" \
+        PS1='(lfs chroot) \u:\w\$ ' \
+        PATH=/usr/bin:/usr/sbin:/bin:/sbin \
+        MAKEFLAGS="$MAKE_JOBS" \
+        TESTSUITEFLAGS="$MAKE_JOBS" \
+        ADD_CFLAGS="${ADD_CFLAGS:-}" \
+        CFLAGS="${CFLAGS:-} ${ADD_CFLAGS:-}" \
+        CXXFLAGS="${CXXFLAGS:-} ${ADD_CFLAGS:-}" \
+        CPPFLAGS="${CPPFLAGS:-} ${ADD_CFLAGS:-}" \
+        ROOT_PASS="${ROOT_PASS:-}" \
+        DRIVE="${DRIVE:-}" \
+        EFI="${EFI:-}" \
+        SWAP="${SWAP:-}" \
+        MAIN="${MAIN:-}" \
+        "$@"
+}
+
+
+require_lfs_chroot_env() {
+    [ -e "$LFS/usr/bin/env" ] || [ -L "$LFS/usr/bin/env" ] || die "Missing $LFS/usr/bin/env"
+}
+
+
+lfs_install_setup() {
+    lfs_header
+    printf '%sBuilding Linux from Scratch...%s\n' "$SUBHEADER" "$RESET"
+    printf '\n'
+
+    load_config
+    export ROOT_PASS
+
+    ensure_build_mounts
+    ensure_chroot_mounts
+    require_lfs_chroot_env
+}
+
+
+run_named_phase() {
+    local phase="$1"
+    printf '%sRunning phase %s.%s\n\n' "$MAGENTA" "$phase" "$RESET"
+    [ -f "$LFS/lfs-ai/scripts/lfs-phase$phase" ] || die "Missing $LFS/lfs-ai/scripts/lfs-phase$phase"
+    run_in_lfs_chroot /bin/bash /lfs-ai/scripts/lfs-phase"$phase"
+}
+
+
+graft_install_phase_pkg() {
+    local phase="$1"
+    local pkg="$2"
+    local ver="$3"
+    local LOG_DIR="$LFS/var/log/lfs-ai/lfs"
+    local GRAFT_BIN="$LFS/usr/pkg/graft-2.16/usr/bin/graft"
+
+    [ -x "$GRAFT_BIN" ] || die "Missing graft binary: $GRAFT_BIN"
+
+    printf '%sInstalling %s...%s\n' "$MAGENTA" "$pkg" "$RESET"
+    "$GRAFT_BIN" -r "$LFS" -pDV "$pkg/$ver" >> "$LOG_DIR/phase$phase/$pkg-$ver.log" 2>&1
+    "$GRAFT_BIN" -r "$LFS" -iV "$pkg/$ver" >> "$LOG_DIR/phase$phase/$pkg-$ver.log" 2>&1
+    printf '%sInstall successful!%s\n\n\n' "$GREEN" "$RESET"
+}
+
+
+run_all_lfs_phases() {
+    lfs_install_setup
+
+    lfs_header
+    run_named_phase 1
+    graft_install_phase_pkg 1 glibc 2.43
+
+    lfs_header
+    run_named_phase 2
+    graft_install_phase_pkg 2 ncurses 6.6
+
+    lfs_header
+    run_named_phase 3
+    graft_install_phase_pkg 3 perl 5.42.2
+
+    lfs_header
+    run_named_phase 4
+
+    lfs_header
+    run_named_phase 5
+}
+
+
+run_optional_stage() {
+    [ -f "$LFS/lfs-ai/scripts/optional" ] || die "Missing $LFS/lfs-ai/scripts/optional"
+    require_lfs_chroot_env
+    run_in_lfs_chroot /bin/bash /lfs-ai/scripts/optional
+}
+
+
+run_final_stage() {
+    [ -f "$LFS/lfs-ai/scripts/final" ] || die "Missing $LFS/lfs-ai/scripts/final"
+    require_lfs_chroot_env
+    run_in_lfs_chroot /bin/bash /lfs-ai/scripts/final
+}
+
+
+# Clean up ACLs
+cleanup_lfs_repo_access() {
+    local repo_dir="$1"
+    local dir
+
+    [ -d "$repo_dir" ] || return 0
+
+    setfacl -R -x u:lfs "$repo_dir" 2>/dev/null || true
+    setfacl -R -k "$repo_dir" 2>/dev/null || true
+
+    dir="$(dirname "$repo_dir")"
+    while [ "$dir" != "/" ]; do
+        setfacl -x u:lfs "$dir" 2>/dev/null || true
+        dir="$(dirname "$dir")"
+    done
+    setfacl -x u:lfs / 2>/dev/null || true
+}
+
+
+# Final Cleanup
+post_final_cleanup() {
+    final_header
+    if confirm_prompt 'Do you want to remove log files?'; then
+        printf '%sRemoving logs...%s\n' "$GREEN" "$RESET"
+        rm -rf "$LFS/var/log/lfs-ai"
+    else
+        printf '%sSkipping log removal.%s\n' "$GREEN" "$RESET"
+    fi
+
+    if confirm_prompt 'Do you want to remove script files?'; then
+        printf '%sRemoving scripts...%s\n' "$GREEN" "$RESET"
+        rm -rf "$LFS/lfs-ai"
+    else
+        printf '%sSkipping script removal.%s\n' "$GREEN" "$RESET"
+    fi
+
+    if confirm_prompt 'Do you want to remove source files?'; then
+        printf '%sRemoving sources...%s\n' "$GREEN" "$RESET"
+        rm -rf "$LFS/sources"
+    else
+        printf '%sSkipping source removal.%s\n' "$GREEN" "$RESET"
+    fi
+
+    if id lfs >/dev/null 2>&1; then
+        if confirm_prompt 'Do you want to remove the lfs build user and home directory?'; then
+            userdel -r lfs || die 'Failed to remove lfs user'
+            printf '%sRemoved lfs user.%s\n' "$GREEN" "$RESET"
+        else
+            printf '%sSkipping lfs user removal.%s\n' "$GREEN" "$RESET"
+        fi
+    fi
+
+    if confirm_prompt 'Do you want to remove ACL entries created for the lfs user?'; then
+        cleanup_lfs_repo_access "$LFS_AI_ROOT"
+        printf '%sRemoved ACL entries for lfs.%s\n' "$GREEN" "$RESET"
+    else
+        printf '%sSkipping ACL cleanup.%s\n' "$GREEN" "$RESET"
+    fi
+
+    [ ! -e /etc/bash.bashrc.NOUSE ] || mv /etc/bash.bashrc.NOUSE /etc/bash.bashrc
+}
+
+
+unmount_if_mounted() {
+    local target="$1"
+
+    if mountpoint -q "$target"; then
+        umount "$target" 2>/dev/null || umount -l "$target" || die "Failed to unmount $target"
+    fi
+}
+
+
+final_unmount_cleanup() {
+    printf '%sUnmounting...%s\n' "$MAGENTA" "$RESET"
+
+    unmount_if_mounted "$LFS/dev/shm"
+    unmount_if_mounted "$LFS/dev/pts"
+    unmount_if_mounted "$LFS/run"
+    unmount_if_mounted "$LFS/proc"
+    unmount_if_mounted "$LFS/sys"
+    unmount_if_mounted "$LFS/dev"
+    unmount_if_mounted "$LFS/boot"
+    unmount_if_mounted "$LFS"
+
+    if swapon --show=NAME 2>/dev/null | grep -Fxq "$SWAP"; then
+        swapoff "$SWAP" || die "Failed to disable swap on $SWAP"
+    fi
+}
+
+
+lfs_menu() {
+    lfs_header
+
+    printf 'This stage modifies the target LFS system.\n'
+    printf 'Ensure prior steps were complete.\n'
+    printf '\n'
+
+    printf '     1) Run phase 1\n'
+    printf '     2) Run phase 2\n'
+    printf '     3) Run phase 3\n'
+    printf '     4) Run phase 4\n'
+    printf '     5) Run phase 5\n'
+    printf '     a) Run all phases\n'
+    printf '     q) Back to main menu\n'
+    printf '\n'
+}
+
+
+lfs_main() {
+    while true; do
+        lfs_menu
+        printf 'Select an option to continue: '
+        read -r choice
+
+        case "$choice" in
+            1)
+                lfs_install_setup
+                run_named_phase 1
+                graft_install_phase_pkg 1 glibc 2.43
+                pause
+            ;;
+            2)
+                lfs_install_setup
+                run_named_phase 2
+                graft_install_phase_pkg 2 ncurses 6.6
+                pause
+            ;;
+            3)
+                lfs_install_setup
+                run_named_phase 3
+                graft_install_phase_pkg 3 perl 5.42.2
+                pause
+            ;;
+            4)
+                lfs_install_setup
+                run_named_phase 4
+                pause
+            ;;
+            5)
+                lfs_install_setup
+                run_named_phase 5
+                pause
+            ;;
+            a|A)
+                printf '%sRunning all phases.%s\n\n' "$MAGENTA" "$RESET"
+                run_all_lfs_phases
+                pause
+            ;;
+            q|Q) return 0 ;;
+            *)
+                printf '\nInvalid option: %s\n' "$choice"
+                pause
+                ;;
+        esac
+    done
+}

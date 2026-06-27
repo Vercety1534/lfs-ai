@@ -7,22 +7,45 @@
 
 set -euo pipefail
 
+umask 022
+
 RED=$'\033[31m'
 GREEN=$'\033[32m'
 BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
-KERNELA=7.1.1
-LFS_VERSION=r13.0-136-systemd
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
+KERNELA=7.1.2
+LFS_VERSION=r13.0-138-systemd
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
 
 LOG_DIR="/var/log/lfs-ai"
 
+
+# Source headers
+. "$base_dir/installer/headers"
+
+
 # Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }
+
+
+require_var() {
+    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
+}
+
+for var in DRIVE EFI SWAP MAIN; do
+    require_var "$var"
+done
 
 
 # Log command
@@ -36,6 +59,7 @@ run_log() {
         return 1
     fi
 }
+
 
 run_log_kernela() {
     local LOG_FILE="$LOG_DIR/linux-$KERNELA.log"
@@ -131,12 +155,14 @@ keymap_exists() {
     [ -n "$match" ]
 }
 
+
 normalize_console_keymap() {
     case "$1" in
         ru) printf '%s\n' 'ru1' ;;
         *)  printf '%s\n' "$1" ;;
     esac
 }
+
 
 unsupported_console_keymap() {
     case "$1" in
@@ -148,6 +174,7 @@ unsupported_console_keymap() {
             ;;
     esac
 }
+
 
 prompt_keymap() {
     local input
@@ -196,6 +223,7 @@ prompt_keymap() {
     done
 }
 
+
 font_exists() {
     local font_name="$1"
     local font_dir='/usr/share/consolefonts'
@@ -212,6 +240,7 @@ font_exists() {
 
     [ -n "$match" ]
 }
+
 
 select_console_font() {
     local locale_name="$1"
@@ -239,8 +268,11 @@ select_console_font() {
 # Set locale
 locale_exists() {
     local locale_name="$1"
-    grep -Eq "^${locale_name//./\\.}[[:space:]]" /usr/share/i18n/SUPPORTED
+
+    awk -v locale="$locale_name" '$1 == locale { found = 1 } END { exit !found }' \
+        /usr/share/i18n/SUPPORTED
 }
+
 
 prompt_locale() {
     local input
@@ -270,11 +302,16 @@ prompt_locale() {
     done
 }
 
+
 generate_locale() {
     local locale_name="$1"
     local locale_line output_name input_name charmap
 
-    locale_line="$(grep -E "^${locale_name//./\\.}[[:space:]]" /usr/share/i18n/SUPPORTED | head -n 1)"
+    locale_line="$(
+        awk -v locale="$locale_name" '$1 == locale { print; exit }' \
+            /usr/share/i18n/SUPPORTED
+    )"
+
     [ -n "$locale_line" ] || die "Could not find locale definition for $locale_name"
 
     output_name="${locale_line%%[[:space:]]*}"
@@ -301,8 +338,6 @@ generate_locale() {
     run_log localedef --force -i en_US -f UTF-8 en_US.UTF-8
     run_log localedef --force -i "$input_name" -f "$charmap" "$output_name"
 }
-
-
 
 
 # Post install clean-up
@@ -345,7 +380,9 @@ printf '%sCreation successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Network Configuration
+final_header
 printf '%sConfiguring network...%s\n' "$MAGENTA" "$RESET"
+mkdir -p /etc/systemd/network
 prompt_dns_profile
 
 case "$DNS_PROFILE" in
@@ -385,6 +422,7 @@ ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 
 # Configuring the system hostname
+final_header
 prompt_hostname
 printf '%s\n' "$HOSTNAME" > /etc/hostname
 
@@ -405,6 +443,7 @@ printf '%sConfiguration successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Configuring the Linux Console
+final_header
 printf '%sConfiguring console...%s\n' "$MAGENTA" "$RESET"
 prompt_keymap
 prompt_locale
@@ -492,6 +531,7 @@ printf '%sConfiguration successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Install linux-$KERNELA
+final_header
 printf '%sInstalling Kernel %s...%s\n' "$MAGENTA" "$KERNELA" "$RESET"
 run_log_kernela cp -v "/sources/linux-$KERNELA.tar.xz" "/usr/src/linux-$KERNELA.tar.xz"
 cd /usr/src
@@ -507,7 +547,7 @@ run_log_kernela make mrproper
 run_log_kernela cp -vf /lfs-ai/lists/config .config
 run_log_kernela make olddefconfig
 
-run_log_kernela make
+run_log_kernela make ${MAKEFLAGS:-}
 run_log_kernela make headers_install
 run_log_kernela make modules_install
 
@@ -524,8 +564,19 @@ printf '%sInstall successful!%s\n\n' "$GREEN" "$RESET"
 
 
 # Using Limine to Set Up the Boot Process
+final_header
 printf '%sConfiguring limine...%s\n' "$MAGENTA" "$RESET"
+
 mounted_efivars=0
+
+cleanup_final() {
+    if [ "${mounted_efivars:-0}" -eq 1 ]; then
+        umount /sys/firmware/efi/efivars 2>/dev/null || true
+    fi
+}
+
+trap cleanup_final EXIT
+
 if ! mountpoint -q /sys/firmware/efi/efivars; then
     run_log mount -t efivarfs efivarfs /sys/firmware/efi/efivars
     mounted_efivars=1
@@ -883,8 +934,5 @@ run_log install -m755 -o root -g root /lfs-ai/scripts/lfs-ai-verify /usr/sbin/lf
 run_log systemctl enable systemd-resolved
 run_log systemctl enable systemd-networkd
 
-if [ "$mounted_efivars" -eq 1 ]; then
-    run_log umount /sys/firmware/efi/efivars
-fi
 printf '%sSuccessful!%s\n\n' "$GREEN" "$RESET"
 

@@ -20,6 +20,7 @@ RESET=$'\033[0m'
 
 # Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }

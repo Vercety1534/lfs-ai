@@ -15,6 +15,9 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 base_dir="$(cd -- "$script_dir/.." && pwd)"
 
@@ -24,8 +27,27 @@ RETRY_DELAY=5
 
 # Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
+}
+
+
+status_line() {
+    local message="$1"
+
+    if [ -t 1 ]; then
+        printf '\r\033[K%s' "$message"
+    else
+        printf '%s\n' "$message"
+    fi
+}
+
+
+status_done() {
+    if [ -t 1 ]; then
+        printf '\n'
+    fi
 }
 
 
@@ -41,10 +63,16 @@ done
 
 # Runtime prerequisites
 [ -f "$base_dir/lists/wget-list" ] || die "Missing download list: $base_dir/lists/wget-list"
+[ -f "$base_dir/lists/sha256sums" ] || die "Missing checksum file: $base_dir/lists/sha256sums"
 [ -d "$LFS/sources" ] || die "Missing sources directory: $LFS/sources"
 LOG_DIR="$LFS/var/log/lfs-ai"
 LOG_FILE="$LOG_DIR/download.log"
 FAILED_LIST="$LOG_DIR/download-failures.log"
+
+command -v wget >/dev/null 2>&1 || die "wget is required but was not found."
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required but was not found."
+command -v awk >/dev/null 2>&1 || die "awk is required but was not found."
+command -v sed >/dev/null 2>&1 || die "sed is required but was not found."
 
 
 # Archive Check
@@ -64,6 +92,7 @@ has_checksum_entry() {
     ' "$base_dir/lists/sha256sums"
 }
 
+
 checksum_file() {
     local filename="$1"
 
@@ -82,10 +111,12 @@ checksum_file() {
     )
 }
 
+
 get_filename_from_url() {
     local url="$1"
     printf '%s\n' "${url##*/}"
 }
+
 
 wget_impl() {
     local line
@@ -104,14 +135,13 @@ wget_impl() {
     esac
 }
 
+
 download_with_wget() {
     local url="$1"
 
     case "$WGET_IMPL" in
         gnu)
-            wget -q --show-progress                \
-                 --no-clobber                      \
-                 --continue                        \
+            wget --continue                        \
                  --directory-prefix="$LFS/sources" \
                  --tries=1                         \
                  --timeout=45                      \
@@ -131,11 +161,7 @@ download_with_wget() {
 }
 
 
-
-
 # Download packages
-[ -f "$base_dir/lists/sha256sums" ] || die "Missing checksum file: $base_dir/lists/sha256sums"
-
 printf '\n%sStarting downloads...%s\n' "$MAGENTA" "$RESET"
 : > "$LOG_FILE"
 printf 'Download started: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
@@ -154,14 +180,17 @@ while IFS= read -r url || [ -n "$url" ]; do
 
     filename="$(get_filename_from_url "$url")"
 
+    status_line "${MAGENTA}Checking:${RESET} $filename"
+
     if [ -f "$LFS/sources/$filename" ]; then
         if has_checksum_entry "$filename"; then
             if checksum_file "$filename"; then
-                printf '%sOK:%s Already present and verified: %s\n' "$GREEN" "$RESET" "$filename"
+                status_line "${GREEN}Verified existing:${RESET} $filename"
                 printf 'SKIPPED verified existing file %s at %s\n' \
                     "$filename" "$(date '+%F %T')" >> "$LOG_FILE"
                 continue
             else
+                status_done
                 printf '%sERROR:%s Existing file failed checksum, removing: %s\n' \
                     "$RED" "$RESET" "$filename"
                 printf 'REMOVING bad existing file %s at %s\n' \
@@ -169,42 +198,46 @@ while IFS= read -r url || [ -n "$url" ]; do
                 rm -f "$LFS/sources/$filename"
             fi
         else
-            printf '%sOK:%s Existing file not checksum-managed, keeping: %s\n' \
-                "$GREEN" "$RESET" "$filename"
+            status_line "${MAGENTA}Unmanaged existing:${RESET} $filename"
             printf 'SKIPPED unmanaged existing file %s at %s\n' \
                 "$filename" "$(date '+%F %T')" >> "$LOG_FILE"
             continue
         fi
     fi
 
-    COUNT=0
-    while [ "$COUNT" -lt "$MAX_RETRIES" ]; do
-        printf 'Attempt %s for %s at %s\n' \
-            "$((COUNT + 1))" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
+    count=0
+    while [ "$count" -lt "$MAX_RETRIES" ]; do
+        status_line "${MAGENTA}Downloading:${RESET} $filename  attempt $((count + 1))/$MAX_RETRIES"
 
-        if download_with_wget "$url"
-        then
+        printf 'Attempt %s for %s at %s\n' \
+            "$((count + 1))" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
+
+        if download_with_wget "$url" >> "$LOG_FILE" 2>&1; then
+            status_line "${GREEN}Downloaded:${RESET} $filename"
             printf 'SUCCESS %s at %s\n' "$url" "$(date '+%F %T')" >> "$LOG_FILE"
             break
         fi
 
-        COUNT=$((COUNT + 1))
+        count=$((count + 1))
         printf 'FAILED attempt %s for %s at %s\n' \
-            "$COUNT" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
+            "$count" "$url" "$(date '+%F %T')" >> "$LOG_FILE"
 
-        if [ "$COUNT" -lt "$MAX_RETRIES" ]; then
-            printf '\n%sERROR:%s Failed: %s\n' "$RED" "$RESET" "$url"
-            printf '%sRetrying in %s seconds...%s\n' "$MAGENTA" "$RETRY_DELAY" "$RESET"
+        if [ "$count" -lt "$MAX_RETRIES" ]; then
+            status_line "${RED}Failed:${RESET} $filename — retrying in ${RETRY_DELAY}s"
             sleep "$RETRY_DELAY"
         else
+            status_line "${RED}Failed:${RESET} $filename after $MAX_RETRIES attempts"
             printf 'ABORTED after %s attempts: %s\n' \
                 "$MAX_RETRIES" "$url" >> "$LOG_FILE"
             printf '%s\n' "$url" >> "$FAILED_LIST"
             download_failed=1
+            rm -f "$LFS/sources/$filename"
             break
         fi
     done
 done < "$base_dir/lists/wget-list"
+
+status_done
 
 chown -R root:root "$LFS/sources" >/dev/null 2>&1
 printf 'Download completed: %s\n' "$(date '+%F %T')" >> "$LOG_FILE"
@@ -221,7 +254,7 @@ printf '%sVerifying source checksums...%s\n' "$MAGENTA" "$RESET"
 cd "$LFS/sources"
 
 # Two CAcerts are not verified due to being non-versioned.
-# Hashes could change with-out notice, resulting in checksum failures.
+# Hashes could change without notice, resulting in checksum failures.
 checksum_failed=0
 
 while IFS= read -r line || [ -n "$line" ]; do
@@ -235,15 +268,20 @@ while IFS= read -r line || [ -n "$line" ]; do
 
     [ -f "$filename" ] || die "Missing downloaded file: $filename"
 
+    status_line "${MAGENTA}Verifying:${RESET} $filename"
+
     if printf '%s\n' "$line" | sha256sum -c - >> "$LOG_FILE" 2>&1; then
-        printf '%sOK:%s %s\n' "$GREEN" "$RESET" "$filename"
+        status_line "${GREEN}Verified:${RESET} $filename"
         printf 'CHECKSUM OK %s at %s\n' "$filename" "$(date '+%F %T')" >> "$LOG_FILE"
     else
+        status_done
         printf '%sERROR:%s Checksum failed: %s\n' "$RED" "$RESET" "$filename" >&2
         printf 'CHECKSUM FAILED %s at %s\n' "$filename" "$(date '+%F %T')" >> "$LOG_FILE"
         checksum_failed=1
     fi
 done < "$base_dir/lists/sha256sums"
+
+status_done
 
 if [ "$checksum_failed" -eq 0 ]; then
     printf '%sDownload and checksum verification successful!%s\n\n' "$GREEN" "$RESET"

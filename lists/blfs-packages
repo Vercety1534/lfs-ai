@@ -1,14 +1,14 @@
 btrfs-progs-7.0
 cmake-4.3.4 (Optional - Fastfetch)
-curl-8.20.0 (Optional - Fastfetch)
+curl-8.21.0 (Optional - Fastfetch)
 dosfstools-4.2
 efibootmgr-18
 efivar-39
-fastfetch-2.64.2 (Optional)
+fastfetch-2.65.1 (Optional)
 graft-2.16
 icu4c-78.3
 inih-r62
-libarchive-3.8.7 (Optional - Fastfetch)
+libarchive-3.8.8 (Optional - Fastfetch)
 libidn2-2.3.8
 libpsl-0.21.5
 libtasn1-4.21.0
@@ -18,7 +18,7 @@ libxml2-2.15.3 (Optional - Fastfetch)
 limine-12.3.3-binary
 lzo-2.10
 make-ca-1.16.1
-nano-8.7.1
+nano-9.1
 nettle-4.0 (Optional - Fastfetch)
 nghttp2-1.69.0 (Optional - Fastfetch)
 nspr-4.39
@@ -28,4 +28,4 @@ popt-1.19
 rsync-3.4.4
 userspace-rcu-0.15.6
 wget-1.25.0
-xfsprogs-6.19.0
+xfsprogs-7.0.1

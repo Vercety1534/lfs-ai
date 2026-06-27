@@ -15,6 +15,9 @@ BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
 WARNED=0
 FAILED=0
 
@@ -24,7 +27,12 @@ export LC_ALL=C
 export PATH
 
 
-bail() { printf '%sERROR:%s %b\n' "$RED" "$RESET" "$1"; exit 1; }
+bail() {
+    printf '%sERROR:%s %b\n' "$RED" "$RESET" "$1" >&2
+    exit 1
+}
+
+
 grep --version > /dev/null 2> /dev/null || bail "grep does not work\n"
 sed -n '' /dev/null || bail "sed does not work\n"
 sort   /dev/null || bail "sort does not work\n"
@@ -34,17 +42,22 @@ version_ge() {
     local IFS=.
     local i
     local -a found required
+    local f r
 
     read -r -a found <<< "${1//[^0-9.]/}"
     read -r -a required <<< "${2//[^0-9.]/}"
 
     for ((i=0; i<${#found[@]} || i<${#required[@]}; i++)); do
-        local f="${found[i]:-0}"
-        local r="${required[i]:-0}"
+        f="${found[i]:-0}"
+        r="${required[i]:-0}"
+
+        [ -n "$f" ] || f=0
+        [ -n "$r" ] || r=0
 
         if ((10#$f > 10#$r)); then
             return 0
         fi
+
         if ((10#$f < 10#$r)); then
             return 1
         fi
@@ -52,6 +65,7 @@ version_ge() {
 
     return 0
 }
+
 
 detect_impl() {
     local cmd="$1"
@@ -86,6 +100,7 @@ detect_impl() {
             ;;
     esac
 }
+
 
 check_impl_tool() {
     local label="$1"
@@ -133,6 +148,7 @@ check_impl_tool() {
             ;;
     esac
 }
+
 
 check_coreutils() {
     local cmd="sort"
@@ -208,57 +224,61 @@ check_coreutils() {
     esac
 }
 
+
 ver_check() {
-   local name="$1"
-   local cmd="$2"
-   local min="$3"
-   local v
+    local name="$1"
+    local cmd="$2"
+    local min="$3"
+    local v
 
-   if ! type -p "$cmd" >/dev/null 2>&1; then
-      printf '%sERROR:%s Cannot find %s (%s)\n' "$RED" "$RESET" "$cmd" "$name"
-      FAILED=1
-      return 1
-   fi
+    if ! type -p "$cmd" >/dev/null 2>&1; then
+        printf '%sERROR:%s Cannot find %s (%s)\n' "$RED" "$RESET" "$cmd" "$name"
+        FAILED=1
+        return 1
+    fi
 
-   v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
+    v=$("$cmd" --version 2>&1 | grep -E -o '[0-9]+\.[0-9.]+[a-z]*' | head -n1)
 
-   if [ -z "$v" ]; then
-      printf '%sERROR:%s %-10s    version could not be detected\n' "$RED" "$RESET" "$name"
-      FAILED=1
-      return 1
-   fi
+    if [ -z "$v" ]; then
+        printf '%sERROR:%s %-10s    version could not be detected\n' "$RED" "$RESET" "$name"
+        FAILED=1
+        return 1
+    fi
 
-   if version_ge "$v" "$min"; then
-      printf '%sOK:%s    %-12s    %-6s    >=    %s\n' "$GREEN" "$RESET" "$name" "$v" "$min"
-      return 0
-   else
-      printf '%sERROR:%s %-12s    is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$name" "$min"
-      FAILED=1
-      return 1
-   fi
+    if version_ge "$v" "$min"; then
+        printf '%sOK:%s    %-12s    %-6s    >=    %s\n' "$GREEN" "$RESET" "$name" "$v" "$min"
+        return 0
+    else
+        printf '%sERROR:%s %-12s    is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$name" "$min"
+        FAILED=1
+        return 1
+    fi
 }
+
 
 need_nvme_version() {
-   if compgen -G '/dev/nvme*n1' >/dev/null; then
-      ver_check 'NVMe-CLI' nvme 1.9
-   else
-      printf '%sSKIP:%s  %-12s    no NVMe device detected\n' "$BLUE" "$RESET" 'NVMe-CLI'
-   fi
+    if compgen -G '/dev/nvme*n1' >/dev/null; then
+        ver_check 'NVMe-CLI' nvme 1.9
+    else
+        printf '%sSKIP:%s  %-12s    no NVMe device detected\n' "$BLUE" "$RESET" 'NVMe-CLI'
+    fi
 }
+
 
 need_cmd() {
-   local name="$1"
-   local cmd="$2"
+    local name="$1"
+    local cmd="$2"
 
-   if type -p "$cmd" >/dev/null 2>&1; then
-      printf '%sOK:%s    %-14s  Found\n' "$GREEN" "$RESET" "$name"
-      return 0
-   else
-      printf '%sERROR:%s %-14s  Missing\n' "$RED" "$RESET" "$name"
-      FAILED=1
-      return 1
-   fi
+    if type -p "$cmd" >/dev/null 2>&1; then
+        printf '%sOK:%s    %-14s  Found\n' "$GREEN" "$RESET" "$name"
+        return 0
+    else
+        printf '%sERROR:%s %-14s  Missing\n' "$RED" "$RESET" "$name"
+        FAILED=1
+        return 1
+    fi
 }
+
 
 need_linux_headers() {
     if [ -f /usr/include/linux/perf_event.h ] && [ -f /usr/include/linux/limits.h ]; then
@@ -272,6 +292,7 @@ need_linux_headers() {
     fi
 }
 
+
 need_gettext_headers() {
     if [ -f /usr/include/libintl.h ]; then
         printf '%sOK:%s    %-14s Found\n' "$GREEN" "$RESET" "Gettext headers"
@@ -284,21 +305,23 @@ need_gettext_headers() {
     fi
 }
 
+
 ver_kernel() {
-   local min="$1"
-   local kver
+    local min="$1"
+    local kver
 
-   kver=$(uname -r | grep -E -o '^[0-9.]+')
+    kver=$(uname -r | grep -E -o '^[0-9.]+')
 
-   if version_ge "$kver" "$min"; then
-      printf '%sOK:%s    Linux Kernel  %-6s    >=    %s\n' "$GREEN" "$RESET" "$kver" "$min"
-      return 0
-   else
-      printf '%sERROR:%s Linux Kernel (%s) is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$kver" "$min"
-      FAILED=1
-      return 1
-   fi
+    if version_ge "$kver" "$min"; then
+        printf '%sOK:%s    Linux Kernel  %-6s    >=    %s\n' "$GREEN" "$RESET" "$kver" "$min"
+        return 0
+    else
+        printf '%sERROR:%s Linux Kernel (%s) is TOO OLD (%s or later required)\n' "$RED" "$RESET" "$kver" "$min"
+        FAILED=1
+        return 1
+    fi
 }
+
 
 check_unix98_pty() {
     if type -p zgrep >/dev/null 2>&1 && zgrep -Eq '^CONFIG_UNIX98_PTYS=y' /proc/config.gz 2>/dev/null; then
@@ -317,95 +340,96 @@ check_unix98_pty() {
     fi
 }
 
+
 check_sh_impl() {
-   local sh_path line impl
+    local sh_path line impl
 
-   sh_path="$(type -p sh 2>/dev/null || true)"
+    sh_path="$(type -p sh 2>/dev/null || true)"
 
-   if [ -z "$sh_path" ]; then
-      WARNED=1
-      printf '%sWARN:%s  sh   is missing\n' "$MAGENTA" "$RESET"
-      return 0
-   fi
+    if [ -z "$sh_path" ]; then
+        WARNED=1
+        printf '%sWARN:%s  sh   is missing\n' "$MAGENTA" "$RESET"
+        return 0
+    fi
 
-   line="$(sh --version 2>&1 | head -n1 || true)"
+    line="$(sh --version 2>&1 | head -n1 || true)"
 
-   case "$line" in
-      *"GNU bash"*)
-         printf '%sOK:%s    sh   is Bash\n' "$GREEN" "$RESET"
-         ;;
-      *"dash"*)
-         WARNED=1
-         printf '%sWARN:%s  sh   is dash, not Bash\n' "$MAGENTA" "$RESET"
-         ;;
-      *"BusyBox"*)
-         WARNED=1
-         printf '%sWARN:%s  sh   is BusyBox ash, not Bash\n' "$MAGENTA" "$RESET"
-         ;;
-      *)
-         if [ -L "$sh_path" ]; then
-            impl="$(readlink -f "$sh_path" 2>/dev/null || printf '%s' "$sh_path")"
+    case "$line" in
+        *"GNU bash"*)
+            printf '%sOK:%s    sh   is Bash\n' "$GREEN" "$RESET"
+            ;;
+        *"dash"*)
             WARNED=1
-            printf '%sWARN:%s  sh   is not Bash (%s)\n' "$MAGENTA" "$RESET" "$impl"
-         else
+            printf '%sWARN:%s  sh   is dash, not Bash\n' "$MAGENTA" "$RESET"
+            ;;
+        *"BusyBox"*)
             WARNED=1
-            printf '%sWARN:%s  sh   implementation could not be identified\n' "$MAGENTA" "$RESET"
-         fi
-         ;;
-   esac
+            printf '%sWARN:%s  sh   is BusyBox ash, not Bash\n' "$MAGENTA" "$RESET"
+            ;;
+        *)
+            if [ -L "$sh_path" ]; then
+                impl="$(readlink -f "$sh_path" 2>/dev/null || printf '%s' "$sh_path")"
+                WARNED=1
+                printf '%sWARN:%s  sh   is not Bash (%s)\n' "$MAGENTA" "$RESET" "$impl"
+            else
+                WARNED=1
+                printf '%sWARN:%s  sh   implementation could not be identified\n' "$MAGENTA" "$RESET"
+            fi
+            ;;
+    esac
 }
+
 
 check_awk_impl() {
-   local line impl
+    local line impl
 
-   if ! type -p awk >/dev/null 2>&1; then
-      WARNED=1
-      printf '%sWARN:%s  awk  is missing\n' "$MAGENTA" "$RESET"
-      return 0
-   fi
+    if ! type -p awk >/dev/null 2>&1; then
+        WARNED=1
+        printf '%sWARN:%s  awk  is missing\n' "$MAGENTA" "$RESET"
+        return 0
+    fi
 
-   line="$(awk --version 2>&1 | head -n1 || true)"
+    line="$(awk --version 2>&1 | head -n1 || true)"
 
-   case "$line" in
-      *"GNU Awk"*|*"GNU awk"*|*"gawk"*)
-         printf '%sOK:%s    awk  is GNU\n' "$GREEN" "$RESET"
-         ;;
-      *"BusyBox"*)
-         WARNED=1
-         printf '%sWARN:%s  awk  is BusyBox, not GNU awk\n' "$MAGENTA" "$RESET"
-         ;;
-      *)
-         impl="$(type -p awk 2>/dev/null || printf 'awk')"
-         WARNED=1
-         printf '%sWARN:%s  awk  is NOT GNU (%s)\n' "$MAGENTA" "$RESET" "$impl"
-         ;;
-   esac
+    case "$line" in
+        *"GNU Awk"*|*"GNU awk"*|*"gawk"*)
+            printf '%sOK:%s    awk  is GNU\n' "$GREEN" "$RESET"
+            ;;
+        *"BusyBox"*)
+            WARNED=1
+            printf '%sWARN:%s  awk  is BusyBox, not GNU awk\n' "$MAGENTA" "$RESET"
+            ;;
+        *)
+            impl="$(type -p awk 2>/dev/null || printf 'awk')"
+            WARNED=1
+            printf '%sWARN:%s  awk  is NOT GNU (%s)\n' "$MAGENTA" "$RESET" "$impl"
+            ;;
+    esac
 }
+
 
 check_yacc_impl() {
-   local line impl
+    local line impl
 
-   if ! type -p yacc >/dev/null 2>&1; then
-      WARNED=1
-      printf '%sWARN:%s  yacc is missing\n' "$MAGENTA" "$RESET"
-      return 0
-   fi
+    if ! type -p yacc >/dev/null 2>&1; then
+        WARNED=1
+        printf '%sWARN:%s  yacc is missing\n' "$MAGENTA" "$RESET"
+        return 0
+    fi
 
-   line="$(yacc --version 2>&1 | head -n1 || true)"
+    line="$(yacc --version 2>&1 | head -n1 || true)"
 
-   case "$line" in
-      *"bison"*|*"Bison"*)
-         printf '%sOK:%s    yacc is Bison\n' "$GREEN" "$RESET"
-         ;;
-      *)
-         impl="$(type -p yacc 2>/dev/null || printf 'yacc')"
-         WARNED=1
-         printf '%sWARN:%s  yacc is NOT Bison (%s)\n' "$MAGENTA" "$RESET" "$impl"
-         ;;
-   esac
+    case "$line" in
+        *"bison"*|*"Bison"*)
+            printf '%sOK:%s    yacc is Bison\n' "$GREEN" "$RESET"
+            ;;
+        *)
+            impl="$(type -p yacc 2>/dev/null || printf 'yacc')"
+            WARNED=1
+            printf '%sWARN:%s  yacc is NOT Bison (%s)\n' "$MAGENTA" "$RESET" "$impl"
+            ;;
+    esac
 }
-
-
 
 
 # Coreutils first because sort is used as the representative implementation/version check.
@@ -450,6 +474,15 @@ check_awk_impl
 check_yacc_impl
 check_sh_impl
 
+tmp_cpp=''
+tmp_bin=''
+
+cleanup_verify_tmp() {
+    rm -f "${tmp_cpp:-}" "${tmp_bin:-}"
+}
+
+trap cleanup_verify_tmp EXIT
+
 printf '\n%sCompiler:%s\n' "$BLUE" "$RESET"
 tmp_cpp="$(mktemp /tmp/lfs-ai-verify-cpp-XXXXXX)"
 tmp_bin="$(mktemp /tmp/lfs-ai-verify-bin-XXXXXX)"
@@ -467,8 +500,6 @@ else
     printf '%sERROR:%s g++ does NOT work\n' "$RED" "$RESET"
     FAILED=1
 fi
-
-rm -f "$tmp_cpp" "$tmp_bin"
 
 cores="$(nproc 2>/dev/null || true)"
 if [ -z "$cores" ]; then

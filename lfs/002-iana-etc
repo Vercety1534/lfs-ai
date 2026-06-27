@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PACKAGE=iana-etc
-VERSION=20260612
+VERSION=20260617
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -17,6 +17,7 @@ RESET=$'\033[0m'
 
 # Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }

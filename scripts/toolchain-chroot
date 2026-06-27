@@ -7,16 +7,22 @@
 
 set -euo pipefail
 
+umask 022
+
 RED=$'\033[31m'
 GREEN=$'\033[32m'
 BLUE=$'\033[34m'
 MAGENTA=$'\033[35m'
 RESET=$'\033[0m'
 
+HEADER=$'\033[1;34m'
+SUBHEADER=$'\033[1;35m'
+
 LOG_DIR="/var/log/lfs-ai/chroot"
 
 # Error handling
 die() {
+    [ -t 1 ] && printf '\n'
     printf '%sERROR:%s %s\n' "$RED" "$RESET" "$1" >&2
     exit 1
 }
@@ -54,8 +60,10 @@ printf '%sCreation successful!%s\n' "$GREEN" "$RESET"
 printf '\n%sCreating essential files...%s\n' "$MAGENTA" "$RESET"
 ln -sf /proc/self/mounts /etc/mtab
 
+host_name="$(hostname)"
+
 cat > /etc/hosts << EOF
-127.0.0.1  localhost "$(hostname)"
+127.0.0.1  localhost $host_name
 ::1        localhost
 EOF
 
@@ -119,7 +127,7 @@ grep -q '^tester:' /etc/passwd || \
 grep -q '^tester:' /etc/group || \
     printf 'tester:x:101:\n' >> /etc/group
 
-install -o tester -d /home/tester
+install -o tester -g tester -d /home/tester
 
 touch /var/log/{btmp,lastlog,faillog,wtmp}
 chgrp utmp /var/log/lastlog
@@ -128,31 +136,107 @@ chmod --quiet 600  /var/log/btmp
 printf '%sFile creation successful!%s\n\n' "$GREEN" "$RESET"
 
 
+save_output_area() {
+    if [ -t 1 ]; then
+        printf '\033[s'
+    fi
+}
+
+
+clear_output_area() {
+    if [ -t 1 ]; then
+        printf '\033[u\033[J'
+    else
+        printf '\n'
+    fi
+}
+
+
+progress_bar() {
+    local current="$1"
+    local total="$2"
+    local width=30
+    local filled
+    local empty
+    local percent
+
+    percent=$((current * 100 / total))
+    filled=$((current * width / total))
+    empty=$((width - filled))
+
+    printf '['
+    printf '%*s' "$filled" '' | tr ' ' '#'
+    printf '%*s' "$empty" '' | tr ' ' '-'
+    printf '] %s%%' "$percent"
+}
+
+
 # Run install scripts
 [ -d /lfs-ai/chroot ] || die 'Missing /lfs-ai/chroot'
 
-cd /lfs-ai
+require_var() {
+    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
+}
 
-found_script=0
+require_var MAKE_JOBS
+
+export MAKEFLAGS="${MAKEFLAGS:-$MAKE_JOBS}"
+export TESTSUITEFLAGS="${TESTSUITEFLAGS:-$MAKE_JOBS}"
+
+cd /lfs-ai || die 'Missing /lfs-ai'
+
+scripts=()
 shopt -s nullglob
 
 for script in /lfs-ai/chroot/*; do
     if [[ -f "$script" && -x "$script" ]]; then
-        found_script=1
-        bash "$script"
+        scripts+=("$script")
     fi
 done
 
-if (( found_script != 1 )); then
+total_scripts="${#scripts[@]}"
+
+if (( total_scripts == 0 )); then
     die 'No executable scripts found in /lfs-ai/chroot'
 fi
+
+printf '%sRunning chroot scripts...%s\n' "$MAGENTA" "$RESET"
+printf '\n'
+
+save_output_area
+
+current=0
+for script in "${scripts[@]}"; do
+    current=$((current + 1))
+    name="$(basename "$script")"
+
+    clear_output_area
+
+    printf '%sRunning:%s  %s\n' "$BLUE" "$RESET" "$name"
+    printf '%sProgress:%s %s/%s ' "$BLUE" "$RESET" "$current" "$total_scripts"
+    progress_bar "$current" "$total_scripts"
+    printf '\n\n'
+
+    if bash "$script"; then
+        printf '\n%sCompleted:%s %s\n' "$GREEN" "$RESET" "$name"
+        sleep 1
+    else
+        printf '\n%sERROR:%s Chroot script failed: %s\n' "$RED" "$RESET" "$name" >&2
+        die "Chroot stage failed."
+    fi
+done
+
+clear_output_area
+
+printf '%sChroot scripts complete!%s\n' "$GREEN" "$RESET"
+printf '%sScripts completed:%s %s/%s\n' "$BLUE" "$RESET" "$total_scripts" "$total_scripts"
 
 
 # Clean up temporary system
 printf '\n%sCleaning up temporary files...%s\n' "$MAGENTA" "$RESET"
 rm -rf /usr/share/{info,man,doc}/*
 
-find /usr/{lib,libexec} -name \*.la -delete
+find /usr/{lib,libexec} -name '*.la' -delete
 
 rm -rf /tools
 
