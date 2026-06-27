@@ -204,10 +204,6 @@ else
     printf '%sTarget drive already clear.%s\n' "$GREEN" "$RESET"
 fi
 
-if findmnt -rn --target "$LFS" >/dev/null 2>&1; then
-    die "Mount point is still mounted after release step: $LFS"
-fi
-
 printf '\n%sWiping target drive...%s\n' "$MAGENTA" "$RESET"
 erase_drive
 printf '%sWipe successful!%s\n' "$GREEN" "$RESET"
