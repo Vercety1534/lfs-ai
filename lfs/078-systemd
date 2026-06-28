@@ -6,7 +6,8 @@
 set -euo pipefail
 
 PACKAGE=systemd
-VERSION=261
+VERSION=261.1
+MANVER=261
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
@@ -38,7 +39,7 @@ run_log() {
 
 
 [ -f "/sources/$PACKAGE-$VERSION.tar.gz" ] || die "Missing source archive: /sources/$PACKAGE-$VERSION.tar.gz"
-[ -f "/sources/systemd-man-pages-$VERSION.tar.xz" ] || die "Missing source archive: /sources/systemd-man-pages-$VERSION.tar.xz"
+[ -f "/sources/systemd-man-pages-$MANVER.tar.xz" ] || die "Missing source archive: /sources/systemd-man-pages-$MANVER.tar.xz"
 
 cd /sources
 
@@ -84,7 +85,7 @@ printf 'NAME="Linux From Scratch"\n' > /etc/os-release
 run_log env DESTDIR="/usr/pkg/$PACKAGE/$VERSION" ninja install
 
 run_log mkdir -pv "/usr/pkg/$PACKAGE/$VERSION/usr/share/man"
-run_log tar -xf "../../systemd-man-pages-$VERSION.tar.xz" \
+run_log tar -xf "../../systemd-man-pages-$MANVER.tar.xz" \
     --no-same-owner --strip-components=1     \
     -C "/usr/pkg/$PACKAGE/$VERSION/usr/share/man"
 

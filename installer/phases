@@ -11,6 +11,8 @@ RESET=$'\033[0m'
 HEADER=$'\033[1;34m'
 SUBHEADER=$'\033[1;35m'
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+base_dir="$(cd -- "$script_dir/.." && pwd)"
 
 confirm_prompt() {
     local prompt="${1:-Continue?}"
@@ -139,7 +141,7 @@ cleanup_lfs_repo_access() {
     [ -d "$repo_dir" ] || return 0
 
     setfacl -R -x u:lfs "$repo_dir" 2>/dev/null || true
-    setfacl -R -k "$repo_dir" 2>/dev/null || true
+    setfacl -bR "$repo_dir" 2>/dev/null || true
 
     dir="$(dirname "$repo_dir")"
     while [ "$dir" != "/" ]; do
@@ -184,7 +186,7 @@ post_final_cleanup() {
     fi
 
     if confirm_prompt 'Do you want to remove ACL entries created for the lfs user?'; then
-        cleanup_lfs_repo_access "$LFS_AI_ROOT"
+        cleanup_lfs_repo_access "$base_dir"
         printf '%sRemoved ACL entries for lfs.%s\n' "$GREEN" "$RESET"
     else
         printf '%sSkipping ACL cleanup.%s\n' "$GREEN" "$RESET"

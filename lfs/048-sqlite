@@ -6,10 +6,10 @@
 set -euo pipefail
 
 PACKAGE=sqlite
-VERSION=3.53.2
+VERSION=3.53.3
 DOC_NAME=sqlite-doc
 SRC_NAME=sqlite-autoconf
-SRC_VERSION=3530200
+SRC_VERSION=3530300
 
 RED=$'\033[31m'
 GREEN=$'\033[32m'
