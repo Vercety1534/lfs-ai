@@ -36,8 +36,8 @@ Before using LFS-AI, make sure you have:
 
 - a compatible Linux host system
 - the required host dependencies installed
-- reviewed [`DEPS.md`](DEPS.md)
-- reviewed [`WORKFLOW.md`](WORKFLOW.md)
+- reviewed [`DEPS.md`](docs/DEPS.md)
+- reviewed [`WORKFLOW.md`](docs/WORKFLOW.md)
 - created and reviewed `settings.conf` using the LFS-AI configuration step
 
 ## Quick start
@@ -52,8 +52,8 @@ cd lfs-ai
 Review the documentation:
 
 ```bash
-less DEPS.md
-less WORKFLOW.md
+less docs/DEPS.md
+less docs/WORKFLOW.md
 ```
 
 Start LFS-AI as root when running installation steps:
@@ -78,7 +78,7 @@ a) Run all
 q) Quit
 ```
 
-See [`WORKFLOW.md`](WORKFLOW.md) for the recommended phase-based workflow.
+See [`WORKFLOW.md`](docs/WORKFLOW.md) for the recommended install workflow.
 
 ## Logs
 
@@ -113,10 +113,10 @@ If something does not work as expected, include the verification log when report
 
 ## Documentation
 
-- [`README.md`](README.md) — project overview and getting started
-- [`DEPS.md`](DEPS.md) — host dependency requirements
-- [`WORKFLOW.md`](WORKFLOW.md) — recommended phase-based workflow
-- `settings.conf` — generated local configuration file
+- [`DEPS.md`](docs/DEPS.md) — host dependency requirements
+- [`WORKFLOW.md`](docs/WORKFLOW.md) — recommended install workflow
+- [`settings.conf.example`](docs/settings.conf.example) — example configuration file
+- [`package.template`](docs/package.template) — package script template
 
 ## Testing and feedback
 

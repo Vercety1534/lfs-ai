@@ -174,15 +174,6 @@ progress_bar() {
 # Run install scripts
 [ -d /lfs-ai/chroot ] || die 'Missing /lfs-ai/chroot'
 
-require_var() {
-    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
-}
-
-require_var MAKE_JOBS
-
-export MAKEFLAGS="${MAKEFLAGS:-$MAKE_JOBS}"
-export TESTSUITEFLAGS="${TESTSUITEFLAGS:-$MAKE_JOBS}"
-
 cd /lfs-ai || die 'Missing /lfs-ai'
 
 scripts=()

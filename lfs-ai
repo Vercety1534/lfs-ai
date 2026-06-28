@@ -236,6 +236,7 @@ run_final() {
             load_config
             ensure_build_mounts
             ensure_chroot_mounts
+            export DRIVE EFI SWAP MAIN
             run_final_stage
             post_final_cleanup
             final_unmount_cleanup

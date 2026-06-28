@@ -73,15 +73,6 @@ mkdir -p "$LOG_DIR"
 
 [ -d /lfs-ai/lfs ] || die 'Missing /lfs-ai/lfs'
 
-require_var() {
-    [ -n "${!1:-}" ] || die "Required variable $1 is not set."
-}
-
-require_var MAKE_JOBS
-
-export MAKEFLAGS="${MAKEFLAGS:-$MAKE_JOBS}"
-export TESTSUITEFLAGS="${TESTSUITEFLAGS:-$MAKE_JOBS}"
-
 # Phase 3 install
 shopt -s nullglob
 

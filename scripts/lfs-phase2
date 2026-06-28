@@ -78,13 +78,11 @@ require_var() {
     [ -n "${!1:-}" ] || die "Required variable $1 is not set."
 }
 
-for var in ROOT_PASS MAKE_JOBS; do
+for var in ROOT_PASS; do
     require_var "$var"
 done
 
 export ROOT_PASS
-export MAKEFLAGS="${MAKEFLAGS:-$MAKE_JOBS}"
-export TESTSUITEFLAGS="${TESTSUITEFLAGS:-$MAKE_JOBS}"
 
 # Phase 2 install
 shopt -s nullglob

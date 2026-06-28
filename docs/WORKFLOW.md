@@ -15,8 +15,8 @@ Before running the installer, review the project documentation:
 
 ```bash
 less README.md
-less DEPS.md
-less WORKFLOW.md
+less docs/DEPS.md
+less docs/WORKFLOW.md
 ```
 
 At minimum, make sure you understand:
@@ -54,7 +54,7 @@ q) Quit
 
 LFS-AI can be used in two main ways:
 
-- Full workflow: use `a) Run all` to run the complete guided install flow from dependency verification through final system setup.
+- Full workflow: use `a) Run all` to run the complete guided install flow from host dependency verification through final system setup.
 - Phase-based workflow: run individual menu options when testing, debugging, or resuming a specific stage.
 
 For a normal install, use the full workflow.

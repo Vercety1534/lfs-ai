@@ -57,10 +57,6 @@ fi
 
 source /home/lfs/.bashrc
 
-export MAKE_JOBS
-export MAKEFLAGS="$MAKE_JOBS"
-export TESTSUITEFLAGS="$MAKE_JOBS"
-
 [ -d "$LFS/sources" ] || die "Missing sources directory: $LFS/sources"
 
 rm -rf "$LOG_DIR"

@@ -5,23 +5,26 @@ LFS-AI requires a properly prepared Linux host system before installation.
 These dependencies are checked from the LFS-AI menu:
 
 ```text
-./lfs-ai
+sudo ./lfs-ai
 ```
+
 Then select:
 
 ```text
 1) Verify host dependencies
 ```
 
-If dependency verification fails, install the missing packages on the host system before continuing. You should also review [`README.md`](README.md) and [`WORKFLOW.md`](WORKFLOW.md) before starting.
+If dependency verification fails, install the missing packages on the host system before continuing. You should also review [`README.md`](../README.md) and [`WORKFLOW.md`](WORKFLOW.md) before starting.
 
 ## Required Host Tools
 
-The host system should have the standard tools expected for an LFS build environment, including:
+LFS-AI requires one of:
 
-`Coreutils`         >= 8.25
-OR          
-`Uutils Coreutils`  >= 0.8
+`Coreutils` >= 8.25
+
+`Uutils Coreutils` >= 0.8
+
+The host system should have the standard tools expected for an LFS build environment, including:
 
 `Acl`               >= 2.2.49
 
@@ -76,14 +79,10 @@ OR
 `Xz`                >= 5.0.0
 
 
-Minimum kernel version:
-
-`Kernel`            >= 5.10
+Minimum kernel version: 5.10
 
 
-Required kernel option:
-
-`CONFIG_UNIX98_PTYS=y`
+Required kernel option: `CONFIG_UNIX98_PTYS=y`
 
 
 ## Required Host Headers
@@ -101,7 +100,7 @@ These are expected to provide at least:
 
 ## Compatibility Notes
 
-LFS-AI has been tested on GNU-based Linux hosts and includes compatibility handling for hosts using uutils or BusyBox-provided tools.
+LFS-AI has been tested on GNU-based Linux hosts and includes compatibility handling for hosts that provide uutils or BusyBox versions of common tools.
 
 Some hosts may provide alternate implementations of common tools, such as:
 

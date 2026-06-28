@@ -38,7 +38,6 @@ for var in LFS MAKE_JOBS; do
     require_var "$var"
 done
 
-
 # Verify virtual file system mounts
 require_bind_mount() {
     local source="$1"
