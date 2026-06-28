@@ -47,7 +47,7 @@ require_bind_mount() {
     local expected_note=''
 
     mountpoint -q "$target" || \
-        die "$target is not mounted. Run ./install -c or the normal install flow first."
+        die "$target is not mounted. Use the LFS-AI menu to prepare the chroot environment first."
 
     actual_source="$(findmnt -nr -o SOURCE --target "$target" 2>/dev/null || true)"
     expected_source="$(findmnt -nr -o SOURCE --target "$source" 2>/dev/null || true)"
@@ -79,7 +79,7 @@ require_mount_fstype() {
     local actual_fstype
 
     mountpoint -q "$target" || \
-        die "$target is not mounted. Run ./install -c or the normal install flow first."
+        die "$target is not mounted. Use the LFS-AI menu to prepare the chroot environment first."
 
     actual_fstype="$(findmnt -nr -o FSTYPE --target "$target" 2>/dev/null || true)"
 
